@@ -97,8 +97,8 @@ class SpeechEngine {
       // Remove math formulas
       .replace(/\$\$[\s\S]*?\$\$/g, '')
       .replace(/\$([^$]+)\$/g, '$1')
-      // Remove markdown headers
-      .replace(/^#{1,6}\s+/gm, '')
+      // Remove markdown headers and ensure period
+      .replace(/^#{1,6}\s+(.*)$/gm, '$1. ')
       // Remove bold/italics
       .replace(/[*_]{1,3}(.*?)[*_]{1,3}/g, '$1')
       // Remove blockquotes
@@ -106,7 +106,7 @@ class SpeechEngine {
       // Remove horizontal rules
       .replace(/^---+$/gm, '')
       // Replace bullet points with pause
-      .replace(/^[-*+]\s+/gm, '. ')
+      .replace(/^[-*+]\s+(.*)$/gm, '$1. ')
       // Normalize whitespace
       .replace(/\r?\n+/g, ' ')
       .replace(/\s+/g, ' ')
@@ -119,6 +119,31 @@ class SpeechEngine {
       .filter((s) => s.length > 5);
 
     return filtered.length > 0 ? filtered : [clean];
+  }
+
+  public loadSentences(sentences: string[]): void {
+    this.stop();
+    this.sentences = sentences.filter((s) => s && s.trim().length > 0);
+    this.currentIndex = 0;
+    this.notifyState();
+  }
+
+  public getSentences(): string[] {
+    return this.sentences;
+  }
+
+  public playFromSentence(startIndex: number, sentences?: string[]): void {
+    if (!this.synth) return;
+    if (sentences && sentences.length > 0) {
+      this.loadSentences(sentences);
+    }
+    if (this.sentences.length === 0) return;
+    if (startIndex >= 0 && startIndex < this.sentences.length) {
+      this.currentIndex = startIndex;
+    }
+    this.isPlaying = true;
+    this.isPaused = false;
+    this.speakCurrent();
   }
 
   public loadText(rawMarkdown: string): void {

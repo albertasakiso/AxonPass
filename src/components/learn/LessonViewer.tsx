@@ -7,12 +7,10 @@
    - Instant 10-Q topic practice launcher
    =================================================================== */
 
-import React, { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
+import React, { useState, useEffect } from 'react';
 import { useLessonProgressStore } from '../../stores/lessonProgressStore';
+import { speechEngine } from '../../lib/audio/speechEngine';
+import AdobeContentReader from './AdobeContentReader';
 import type { Subtopic, Topic, Domain } from '../../types';
 
 interface LessonViewerProps {
@@ -46,6 +44,13 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
   const isCompleted = isSubtopicCompleted(subtopic.id);
   const isRelearn = isSubtopicRelearn(subtopic.id);
   const [justCelebrated, setJustCelebrated] = useState(false);
+
+  // Stop speech when closing lesson modal
+  useEffect(() => {
+    return () => {
+      speechEngine.stop();
+    };
+  }, []);
 
   // Find index in sequence of all subtopics
   const currentIndex = allSubtopics.findIndex(s => s.id === subtopic.id);
@@ -220,17 +225,13 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--color-bg-muted)', margin: 'var(--space-6) 0' }} />
 
-          {/* Main Markdown Text */}
+          {/* Main Markdown Text with Adobe-Style Read Aloud */}
           <div className="ereader-prose font-normal">
-            {subtopic.content_body ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {subtopic.content_body}
-              </ReactMarkdown>
-            ) : (
-              <p className="text-muted" style={{ fontStyle: 'italic' }}>
-                No detailed content body available for this subtopic.
-              </p>
-            )}
+            <AdobeContentReader
+              contentMarkdown={subtopic.content_body || 'No detailed content body available for this subtopic.'}
+              chapterTitle={`${subtopic.subtopic_code} — ${subtopic.name}`}
+              showAudioControlsInitially={false}
+            />
           </div>
 
           {/* Section Practice Callout Banner */}

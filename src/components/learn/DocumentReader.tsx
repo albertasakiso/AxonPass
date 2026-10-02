@@ -5,13 +5,10 @@
    =================================================================== */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
 import { useLessonProgressStore } from '../../stores/lessonProgressStore';
+import { supabase } from '../../lib/supabase';
 import type { StudyMaterial, DocumentIngestionRecord, Topic, Subtopic, Domain } from '../../types';
-import AudioReaderPlayer from './AudioReaderPlayer';
+import AdobeContentReader from './AdobeContentReader';
 
 /**
  * Format raw storage filenames into clean, human-friendly titles.
@@ -115,14 +112,74 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
   const isMobile = typeof window !== 'undefined' && (
     window.innerWidth < 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
   );
-  const [viewerMode, setViewerMode] = useState<'google_docs' | 'native'>(isMobile ? 'google_docs' : 'native');
+  const [viewerMode, setViewerMode] = useState<'audio_reader' | 'google_docs' | 'native'>('audio_reader');
+  const [vaultDocContent, setVaultDocContent] = useState<string>('');
+  const [loadingDocContent, setLoadingDocContent] = useState<boolean>(false);
 
-  // Auto-switch to google docs mode on mobile when opening a vault document
+  // Load document chunks/blueprint when a vault doc is opened
   useEffect(() => {
-    if (viewingVaultDoc && isMobile) {
-      setViewerMode('google_docs');
+    if (!viewingVaultDoc) {
+      setVaultDocContent('');
+      return;
     }
-  }, [viewingVaultDoc, isMobile]);
+
+    let isMounted = true;
+    setLoadingDocContent(true);
+
+    async function fetchDocGuide() {
+      try {
+        const { data: chunks } = await supabase
+          .from('document_chunks')
+          .select('chunk_text, chunk_index')
+          .or(`document_name.ilike.%${viewingVaultDoc!.file_name}%,document_path.ilike.%${viewingVaultDoc!.file_name}%`)
+          .order('chunk_index', { ascending: true })
+          .limit(30);
+
+        if (!isMounted) return;
+
+        if (chunks && chunks.length > 0) {
+          const compiled = chunks
+            .map((c, i) => `### Section ${i + 1}\n\n${c.chunk_text.trim()}`)
+            .join('\n\n---\n\n');
+          setVaultDocContent(compiled);
+        } else {
+          const title = formatCleanDocumentTitle(viewingVaultDoc!.file_name);
+          const blueprint = `# ${title}
+
+## Audio Study Guide & Blueprint — ${viewingVaultDoc!.certification_slug.toUpperCase()}
+
+Welcome to the interactive audio study reader for **${title}**.
+
+This reference text covers the essential syllabus, domain knowledge, and exam requirements for ${viewingVaultDoc!.certification_name || viewingVaultDoc!.certification_slug.toUpperCase()}.
+
+---
+
+### Ingested Vault Metadata
+- **File Archive:** \`${viewingVaultDoc!.file_name}\`
+- **File Size:** ${(viewingVaultDoc!.file_size_bytes / (1024 * 1024)).toFixed(2)} MB
+- **Coverage Index:** ~${viewingVaultDoc!.extracted_chunks_count || 15} distilled modules
+
+---
+
+### Study Instructions
+Use the Adobe Read Aloud controls above to listen along. Tap or click on any sentence or heading to immediately begin reading from that point.
+
+To inspect the raw PDF layout, toggle **Direct PDF** or **Mobile HTML5** in the header.`;
+          setVaultDocContent(blueprint);
+        }
+      } catch (err) {
+        console.error('Failed to load vault doc chunks:', err);
+      } finally {
+        if (isMounted) setLoadingDocContent(false);
+      }
+    }
+
+    fetchDocGuide();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [viewingVaultDoc]);
 
   const { toggleChapterComplete, isChapterCompleted } = useLessonProgressStore();
 
@@ -515,19 +572,6 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
 
             {/* Main Stage: Reading Pane */}
             <main className="ereader-main-stage" style={{ paddingBottom: '140px' }}>
-              {/* Optional Collapsible Audio Reader Player */}
-              {showAudioPlayer && (
-                <div style={{ marginBottom: 'var(--space-4)' }}>
-                  <AudioReaderPlayer
-                    contentMarkdown={activeContentMarkdown}
-                    chapterTitle={activeTitle}
-                    onNextChapter={handleNextChapter}
-                    onPrevChapter={handlePrevChapter}
-                    onClose={() => setShowAudioPlayer(false)}
-                  />
-                </div>
-              )}
-
               {/* Subtopic Meta Header if in subtopic mode */}
               {activeTab === 'subtopics' && selectedSubtopic && (
                 <div
@@ -570,15 +614,15 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
                 </div>
               )}
 
-              {/* Markdown Content Surface */}
-              <article className={`ereader-prose font-size-${fontSize}`}>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {activeContentMarkdown}
-                </ReactMarkdown>
-              </article>
+              {/* Adobe-Style Interactive Content Reader with Sentence Highlighting & Click-to-Read */}
+              <AdobeContentReader
+                contentMarkdown={activeContentMarkdown}
+                chapterTitle={activeTitle}
+                fontSize={fontSize === 'normal' ? 'base' : fontSize === 'large' ? 'lg' : 'xl'}
+                onNextChapter={handleNextChapter}
+                onPrevChapter={handlePrevChapter}
+                showAudioControlsInitially={showAudioPlayer}
+              />
 
               {/* Exam Tip Callout if in subtopic mode */}
               {activeTab === 'subtopics' && selectedSubtopic?.exam_tips && (
@@ -977,6 +1021,15 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
               >
                 <button
                   type="button"
+                  onClick={() => setViewerMode('audio_reader')}
+                  className={`btn btn-xs ${viewerMode === 'audio_reader' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '10px', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}
+                  title="Interactive Adobe Read Aloud with Sentence Highlighting & Click-to-Read"
+                >
+                  🎧 Audio Guide
+                </button>
+                <button
+                  type="button"
                   onClick={() => setViewerMode('google_docs')}
                   className={`btn btn-xs ${viewerMode === 'google_docs' ? 'btn-primary' : 'btn-ghost'}`}
                   style={{ fontSize: '10px', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}
@@ -1073,7 +1126,34 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
               position: 'relative',
             }}
           >
-            {viewingVaultDoc.public_url ? (
+            {viewerMode === 'audio_reader' ? (
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  overflowY: 'auto',
+                  padding: 'var(--space-6)',
+                  backgroundColor: 'var(--color-bg)',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {loadingDocContent ? (
+                  <div style={{ textAlign: 'center', padding: 'var(--space-12)' }}>
+                    <div className="spinner" style={{ margin: '0 auto var(--space-4) auto' }} />
+                    <p className="text-muted" style={{ fontSize: 'var(--text-sm)' }}>
+                      Extracting and preparing document audio guide with sentence-tracking...
+                    </p>
+                  </div>
+                ) : (
+                  <AdobeContentReader
+                    contentMarkdown={vaultDocContent}
+                    chapterTitle={formatCleanDocumentTitle(viewingVaultDoc.file_name)}
+                    fontSize={fontSize === 'normal' ? 'base' : fontSize === 'large' ? 'lg' : 'xl'}
+                    showAudioControlsInitially={true}
+                  />
+                )}
+              </div>
+            ) : viewingVaultDoc.public_url ? (
               viewerMode === 'google_docs' ? (
                 <iframe
                   src={`https://docs.google.com/viewer?url=${encodeURIComponent(viewingVaultDoc.public_url)}&embedded=true`}
