@@ -5,10 +5,12 @@
    =================================================================== */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { useProgressStore } from '../../stores/progressStore';
 import { syncUserProgressToCloud, type SyncResult } from '../../lib/syncUserProgress';
 import { supabase } from '../../lib/supabase';
+import { db } from '../../lib/db';
 import type { Certification } from '../../types';
 
 interface UserProfileModalProps {
@@ -20,6 +22,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const navigate = useNavigate();
   const { user, updateProfile, signOut, activeCertificationSlug, setActiveCertification } = useAuthStore();
   const {
     streakDays,
@@ -39,6 +42,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+
+  // Self-Service: Password Update
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordFeedback, setPasswordFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Self-Service: Account Deletion Request
+  const [userStatus, setUserStatus] = useState<string>(user?.status || 'active');
+  const [deletionFeedback, setDeletionFeedback] = useState<string | null>(null);
 
   // Sync state with store on open
   useEffect(() => {
@@ -111,6 +124,96 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     } finally {
       setIsSyncing(false);
       setTimeout(() => setSyncFeedback(null), 4000);
+    }
+  };
+
+  // Self-Service: Password Update
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordFeedback(null);
+    if (newPassword.length < 6) {
+      setPasswordFeedback({ type: 'error', message: 'Password must be at least 6 characters long.' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordFeedback({ type: 'error', message: 'Passwords do not match.' });
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) {
+        setPasswordFeedback({ type: 'error', message: error.message });
+      } else {
+        setPasswordFeedback({ type: 'success', message: '✓ Password updated successfully.' });
+        setNewPassword('');
+        setConfirmPassword('');
+        setIsChangingPassword(false);
+      }
+    } catch (err: any) {
+      setPasswordFeedback({ type: 'error', message: err.message || 'Failed to update password.' });
+    }
+  };
+
+  // Self-Service: Account Deletion Request
+  const handleRequestDeletion = async () => {
+    try {
+      const { error } = await supabase.rpc('self_request_account_deletion');
+      if (error) {
+        setDeletionFeedback(`⚠️ ${error.message}`);
+      } else {
+        setUserStatus('deletion_requested');
+        setDeletionFeedback('✓ Account deletion request submitted. An administrator will review and process your request.');
+      }
+    } catch (err: any) {
+      setDeletionFeedback(`⚠️ ${err.message}`);
+    }
+  };
+
+  // Self-Service: Cancel Account Deletion Request
+  const handleCancelDeletion = async () => {
+    try {
+      const { error } = await supabase.rpc('self_cancel_account_deletion');
+      if (error) {
+        setDeletionFeedback(`⚠️ ${error.message}`);
+      } else {
+        setUserStatus('active');
+        setDeletionFeedback('✓ Account deletion request cancelled.');
+      }
+    } catch (err: any) {
+      setDeletionFeedback(`⚠️ ${err.message}`);
+    }
+  };
+
+  // Export Learning Transcript
+  const handleExportData = async () => {
+    try {
+      const progress = await db.userProgress.toArray();
+      const sessions = await db.quizSessions.toArray();
+      const exportObject = {
+        platform: 'AxonPass Learning Platform',
+        exportedAt: new Date().toISOString(),
+        user: {
+          id: user.id,
+          email: user.email,
+          fullName: user.full_name,
+          role: user.role,
+          streakDays,
+          totalStudyMinutes,
+          overallAccuracy,
+        },
+        progress,
+        sessions,
+      };
+
+      const blob = new Blob([JSON.stringify(exportObject, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `axonpass_transcript_${user.email.split('@')[0]}_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`Export error: ${e.message}`);
     }
   };
 
@@ -224,6 +327,30 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 >
                   {user.role === 'owner' ? '👑 Owner' : user.role === 'admin' ? '🛡️ Admin' : '🎓 Verified Learner'}
                 </span>
+
+                {(user.role === 'owner' || user.role === 'admin') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      navigate('/admin');
+                    }}
+                    className="btn btn-xs"
+                    style={{
+                      backgroundColor: '#f59e0b',
+                      color: '#000',
+                      fontWeight: 800,
+                      fontSize: '10px',
+                      borderRadius: 'var(--radius-full)',
+                      padding: '2px 8px',
+                      cursor: 'pointer',
+                      border: 'none',
+                    }}
+                    title="Open Enterprise Admin & User Management Studio"
+                  >
+                    ⚙️ Admin Studio →
+                  </button>
+                )}
               </div>
               <div style={{ fontSize: '12px', opacity: 0.85, marginTop: '2px' }}>
                 {user.email}
@@ -443,6 +570,162 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     {mins}m
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Self-Service: Password Management */}
+            <div
+              className="card"
+              style={{
+                padding: '14px 16px',
+                marginBottom: '16px',
+                backgroundColor: 'var(--color-bg-subtle)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-ink)' }}>
+                    🔐 Account Password
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)' }}>
+                    Self-service credential management
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsChangingPassword(!isChangingPassword)}
+                  className="btn btn-xs btn-secondary"
+                  style={{ fontSize: '11px' }}
+                >
+                  {isChangingPassword ? 'Cancel' : 'Change Password'}
+                </button>
+              </div>
+
+              {isChangingPassword && (
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-color)' }}>
+                  <div style={{ marginBottom: '8px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                      New Password (min 6 characters)
+                    </label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      className="input"
+                      style={{ width: '100%', fontSize: '12px' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, marginBottom: '4px' }}>
+                      Repeat Password
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Repeat password"
+                      className="input"
+                      style={{ width: '100%', fontSize: '12px' }}
+                    />
+                  </div>
+                  {passwordFeedback && (
+                    <div
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: '11px',
+                        marginBottom: '8px',
+                        backgroundColor: passwordFeedback.type === 'success' ? '#dcfce7' : '#fee2e2',
+                        color: passwordFeedback.type === 'success' ? '#166534' : '#991b1b',
+                      }}
+                    >
+                      {passwordFeedback.message}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleUpdatePassword}
+                    className="btn btn-primary btn-xs"
+                    style={{ fontWeight: 700 }}
+                  >
+                    Save New Password
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Self-Service: Data Export & Privacy */}
+            <div
+              className="card"
+              style={{
+                padding: '14px 16px',
+                marginBottom: '20px',
+                backgroundColor: 'var(--color-bg-subtle)',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-ink)' }}>
+                    📦 Learning History &amp; Privacy
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)' }}>
+                    Export your full study transcript or request account removal.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExportData}
+                  className="btn btn-xs btn-secondary"
+                  style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  title="Download complete question history and metrics JSON"
+                >
+                  <span>⬇</span> Export JSON
+                </button>
+              </div>
+
+              {deletionFeedback && (
+                <div
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: '11px',
+                    margin: '8px 0',
+                    backgroundColor: deletionFeedback.startsWith('✓') ? '#dcfce7' : '#fee2e2',
+                    color: deletionFeedback.startsWith('✓') ? '#166534' : '#991b1b',
+                  }}
+                >
+                  {deletionFeedback}
+                </div>
+              )}
+
+              <div style={{ paddingTop: '8px', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '11px', color: 'var(--color-ink-muted)' }}>
+                  {userStatus === 'deletion_requested'
+                    ? '⚠️ Account deletion request pending review.'
+                    : 'Need to permanently close your account?'}
+                </span>
+                {userStatus === 'deletion_requested' ? (
+                  <button
+                    type="button"
+                    onClick={handleCancelDeletion}
+                    className="btn btn-xs btn-secondary"
+                    style={{ fontSize: '10px', fontWeight: 'bold' }}
+                  >
+                    Cancel Deletion Request
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleRequestDeletion}
+                    className="btn btn-xs btn-ghost"
+                    style={{ fontSize: '10px', color: '#dc2626' }}
+                  >
+                    Request Deletion
+                  </button>
+                )}
               </div>
             </div>
 

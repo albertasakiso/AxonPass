@@ -10,10 +10,11 @@ import { ImportWizard } from '../components/admin/ImportWizard';
 import { QuestionBankManager } from '../components/admin/QuestionBankManager';
 import { BatchHistoryView } from '../components/admin/BatchHistoryView';
 import { AiIngestionAuditView } from '../components/admin/AiIngestionAuditView';
+import { UserManager } from '../components/admin/UserManager';
 import { downloadExcelQuestionTemplate } from '../lib/parser/templateGenerator';
 import { QUESTIONS_TEMPLATE, ANSWERS_TEMPLATE, type Certification, type Domain } from '../types';
 
-type AdminTab = 'ai-audit' | 'import' | 'questions' | 'templates' | 'batches' | 'overview';
+type AdminTab = 'users' | 'ai-audit' | 'import' | 'questions' | 'templates' | 'batches' | 'overview';
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('ai-audit');
@@ -77,6 +78,7 @@ export default function AdminPage() {
   };
 
   const tabs: { id: AdminTab; label: string; icon: string }[] = [
+    { id: 'users', label: '👥 User & Access Management', icon: '👥' },
     { id: 'ai-audit', label: '🧠 AI Ingestion & ML Audit (100%)', icon: '🧠' },
     { id: 'import', label: '📥 Import Pipeline & Wizard', icon: '📥' },
     { id: 'questions', label: '❓ Question Bank Manager', icon: '❓' },
@@ -135,6 +137,11 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+
+      {/* TAB: ENTERPRISE USER & ACCESS MANAGEMENT */}
+      {activeTab === 'users' && (
+        <UserManager certifications={certifications} />
+      )}
 
       {/* TAB 0: AI INGESTION & TRAINING AUDIT (100% COVERAGE & ZERO-STORAGE) */}
       {activeTab === 'ai-audit' && (

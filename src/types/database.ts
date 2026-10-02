@@ -146,6 +146,8 @@ export interface UserProfile {
   avatar_url?: string | null;
   readiness_score?: number;
   total_study_minutes?: number;
+  status?: 'active' | 'suspended' | 'deletion_requested';
+  deletion_requested_at?: string | null;
 }
 
 export interface UserProgress {
