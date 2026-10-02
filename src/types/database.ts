@@ -316,6 +316,8 @@ export interface DocumentIngestionRecord {
   associated_questions_count: number;
   cloud_storage_bytes: number;
   cloud_storage_status: string;
+  public_url?: string;
+  storage_path?: string;
   ingestion_timestamp: string;
   verification_hash: string;
   created_at: string;

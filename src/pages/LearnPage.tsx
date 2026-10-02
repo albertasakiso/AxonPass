@@ -11,7 +11,7 @@ import { InteractiveCalculators } from '../components/learn/InteractiveCalculato
 import { CisaVersionDeltaViewer } from '../components/learn/CisaVersionDeltaViewer';
 import { TaskStatementsDrawer } from '../components/learn/TaskStatementsDrawer';
 import { ConceptGraphExplorer } from '../components/learn/ConceptGraphExplorer';
-import type { Certification, Domain, Topic, Subtopic, GlossaryTerm, StudyMaterial, TaskStatement } from '../types';
+import type { Certification, Domain, Topic, Subtopic, GlossaryTerm, StudyMaterial, TaskStatement, DocumentIngestionRecord } from '../types';
 
 export default function LearnPage() {
   const navigate = useNavigate();
@@ -27,6 +27,7 @@ export default function LearnPage() {
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
   const [glossaryTerms, setGlossaryTerms] = useState<GlossaryTerm[]>([]);
   const [studyMaterials, setStudyMaterials] = useState<StudyMaterial[]>([]);
+  const [vaultDocuments, setVaultDocuments] = useState<DocumentIngestionRecord[]>([]);
   const [taskStatements, setTaskStatements] = useState<TaskStatement[]>([]);
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
 
@@ -109,6 +110,19 @@ export default function LearnPage() {
       } else {
         setStudyMaterials([]);
         setSelectedMaterialId(null);
+      }
+
+      // Ingested Storage Vault Documents for this Certification (Zero bleed guarantee)
+      const { data: vaultData } = await supabase
+        .from('document_ingestion_ledger')
+        .select('*')
+        .eq('certification_slug', selectedCertSlug)
+        .order('file_name');
+
+      if (vaultData) {
+        setVaultDocuments(vaultData as DocumentIngestionRecord[]);
+      } else {
+        setVaultDocuments([]);
       }
 
       setLoading(false);
@@ -402,9 +416,10 @@ export default function LearnPage() {
         /* View 4: CISA Version 28 vs 27 Gap & Delta Analysis */
         <CisaVersionDeltaViewer onStartDeltaQuiz={handleStartDeltaQuiz} />
       ) : viewMode === 'documents' ? (
-        /* View 1: Full Document E-Reader */
+        /* View 1: Full Document E-Reader & Audio Player */
         <DocumentReader
           materials={studyMaterials}
+          vaultDocuments={vaultDocuments}
           activeMaterialId={selectedMaterialId}
           onSelectMaterial={(m) => setSelectedMaterialId(m.id)}
           onPracticeChapter={(domId) => handleStartDomainQuiz(domId)}

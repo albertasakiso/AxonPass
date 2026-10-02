@@ -10,6 +10,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useProgressStore } from '../stores/progressStore';
 import type { Certification } from '../types';
 import AiClusterConfigPanel from '../components/admin/AiClusterConfigPanel';
+import FreeTierStorageMonitor from '../components/admin/FreeTierStorageMonitor';
 
 export default function SettingsPage() {
   const { user, signOut, activeCertificationSlug, setActiveCertification } = useAuthStore();
@@ -189,6 +190,9 @@ export default function SettingsPage() {
 
       {/* Scalable AI Compute Cluster & Multi-Machine Configuration */}
       <AiClusterConfigPanel />
+
+      {/* Supabase Free-Tier Storage & Resource Quota Auto-Cleanser */}
+      <FreeTierStorageMonitor />
 
       {/* Appearance & Themes */}
       <div className="settings-section">
