@@ -17,6 +17,11 @@ import {
   streamOllamaExplanation,
   type OllamaSettings,
 } from '../../lib/ai/ollamaService';
+import {
+  getClusterMachines,
+  setActiveMachine,
+  type AiClusterMachine,
+} from '../../lib/ai/aiClusterStore';
 
 interface AiExplainerDrawerProps {
   question: Question;
@@ -36,6 +41,17 @@ export default function AiExplainerDrawer({
 
   // Ollama Streaming State
   const [ollamaSettings, setOllamaSettings] = useState<OllamaSettings>(getOllamaSettings());
+  const [clusterMachines, setClusterMachines] = useState<AiClusterMachine[]>(getClusterMachines);
+  const activeClusterNode = clusterMachines.find((m) => m.isActive) || clusterMachines[0];
+
+  const handleClusterNodeChange = (nodeId: string) => {
+    const updated = setActiveMachine(nodeId);
+    setClusterMachines(getClusterMachines());
+    if (updated) {
+      setOllamaSettings(getOllamaSettings());
+    }
+  };
+
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamedText, setStreamedText] = useState('');
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -453,11 +469,23 @@ export default function AiExplainerDrawer({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
                   <span style={{ fontSize: '1.2rem' }}>🔌</span>
                   <div>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'bold', color: 'var(--color-ink)' }}>
-                      Endpoint: <code style={{ backgroundColor: 'rgba(0,0,0,0.06)', padding: '2px 4px', borderRadius: '4px' }}>{ollamaSettings.endpoint}</code>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-ink)' }}>Node:</span>
+                      <select
+                        className="select select-xs"
+                        style={{ fontSize: '11px', fontWeight: 'bold', padding: '1px 6px', maxWidth: '240px' }}
+                        value={activeClusterNode?.id}
+                        onChange={(e) => handleClusterNodeChange(e.target.value)}
+                      >
+                        {clusterMachines.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.address})
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)' }}>
-                      Model: <strong>{ollamaSettings.model}</strong> • Zero Cloud Costs
+                    <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)', marginTop: '2px' }}>
+                      Model: <strong>{ollamaSettings.model}</strong> • <code>{ollamaSettings.endpoint}</code>
                     </div>
                   </div>
                 </div>

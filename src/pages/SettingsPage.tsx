@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useProgressStore } from '../stores/progressStore';
 import type { Certification } from '../types';
+import AiClusterConfigPanel from '../components/admin/AiClusterConfigPanel';
 
 export default function SettingsPage() {
   const { user, signOut, activeCertificationSlug, setActiveCertification } = useAuthStore();
@@ -185,6 +186,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Scalable AI Compute Cluster & Multi-Machine Configuration */}
+      <AiClusterConfigPanel />
 
       {/* Appearance & Themes */}
       <div className="settings-section">
