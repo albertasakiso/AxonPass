@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
 import { calculateTimeLimit } from '../lib/timer';
 import { db } from '../lib/db';
+import { launchDiagnosticExam } from '../lib/scoring/readinessGauge';
 import type { Certification, Domain, Topic, Question } from '../types';
 
 export default function PracticePage() {
@@ -293,6 +294,53 @@ export default function PracticePage() {
       {/* Main Grid: Practice Modes */}
       <div className="practice-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
         
+        {/* Card 0: 20Q Adaptive Baseline Diagnostic (Gold Standard Benchmark) */}
+        <div
+          className="practice-mode-card"
+          style={{
+            borderColor: 'var(--color-primary)',
+            background: 'linear-gradient(135deg, var(--color-bg) 0%, var(--color-primary-surface) 100%)',
+            boxShadow: 'var(--shadow-md)',
+          }}
+        >
+          <div>
+            <div
+              className="practice-icon-box"
+              style={{
+                backgroundColor: 'var(--color-primary)',
+                borderColor: 'var(--color-primary)',
+                color: '#ffffff',
+              }}
+            >
+              ⚡
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <span className="badge badge-primary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Adaptive Onboarding
+              </span>
+            </div>
+            <h3 className="practice-card-title">20Q Adaptive Baseline Diagnostic</h3>
+            <p className="practice-card-desc">
+              Calibrates your initial latent ability, predicts scaled score (200–800), and reveals domain blind spots in ~25 mins.
+            </p>
+          </div>
+          <button
+            disabled={isLaunching}
+            onClick={async () => {
+              setIsLaunching(true);
+              const cert = certifications.find(c => c.slug === selectedCertSlug);
+              if (cert) {
+                await launchDiagnosticExam(cert.id, startQuiz, navigate);
+              }
+              setIsLaunching(false);
+            }}
+            className="btn btn-primary"
+            style={{ width: '100%', marginTop: 'var(--space-3)' }}
+          >
+            Launch 20Q Diagnostic ➔
+          </button>
+        </div>
+
         {/* Card 1: Quick Daily Drill */}
         <div className="practice-mode-card">
           <div>

@@ -24,15 +24,23 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useProgressStore } from '../stores/progressStore';
+import { useLessonProgressStore } from '../stores/lessonProgressStore';
 import { useQuizStore } from '../stores/quizStore';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
+import { CompositeReadinessGauge } from '../components/insights/CompositeReadinessGauge';
+import {
+  calculateCompositeReadiness,
+  launchDiagnosticExam,
+  getTargetExamDate,
+} from '../lib/scoring/readinessGauge';
 import type { Certification } from '../types';
 
 export default function InsightsPage() {
   const navigate = useNavigate();
   const { startQuiz } = useQuizStore();
   const { activeCertificationSlug, setActiveCertification, user } = useAuthStore();
+  const completedSubtopicsCount = useLessonProgressStore((state) => state.completedSubtopicIds.size);
 
   const {
     activeCertificationId,
@@ -56,9 +64,15 @@ export default function InsightsPage() {
 
   const [certifications, setCertifications] = useState<Certification[]>([]);
   const [selectedCertSlug, setSelectedCertSlug] = useState<string>(activeCertificationSlug || 'cisa');
+  const [targetExamDate, setTargetExamDate] = useState<string | null>(() => getTargetExamDate(selectedCertSlug));
   const [activeTab, setActiveTab] = useState<'overview' | 'topics' | 'mistakes'>('overview');
   const [topicSearchTerm, setTopicSearchTerm] = useState('');
   const [selectedDomainFilter, setSelectedDomainFilter] = useState<number | 'all'>('all');
+
+  // Sync target exam date when selected cert changes
+  useEffect(() => {
+    setTargetExamDate(getTargetExamDate(selectedCertSlug));
+  }, [selectedCertSlug]);
 
   // Load available certifications
   useEffect(() => {
@@ -147,20 +161,34 @@ export default function InsightsPage() {
     navigate('/quiz');
   };
 
-  // Start general diagnostic drill
-  const handleStartDiagnostic = async () => {
-    const certId = activeCertificationId || 'a0000000-0000-0000-0000-000000000001';
-    const { data: qData } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('certification_id', certId)
-      .eq('is_active', true)
-      .limit(15);
+  // Compute Unified Composite Readiness Index (Testing 55%, Syllabus 25%, Leitner 20%)
+  const compositeReadiness = useMemo(() => {
+    return calculateCompositeReadiness({
+      certSlug: selectedCertSlug,
+      irtEstimate,
+      totalAttempted,
+      overallAccuracy,
+      boxCounts,
+      totalCertQuestions: 5000,
+      totalSubtopics: topicSummaries.length > 0 ? topicSummaries.length : 0,
+      completedSubtopicsCount,
+      targetExamDate,
+    });
+  }, [
+    selectedCertSlug,
+    irtEstimate,
+    totalAttempted,
+    overallAccuracy,
+    boxCounts,
+    topicSummaries.length,
+    completedSubtopicsCount,
+    targetExamDate,
+  ]);
 
-    if (qData && qData.length > 0) {
-      await startQuiz(qData, 'quick_check', 900, certId, null, 'immediate');
-      navigate('/quiz');
-    }
+  // Start 20-Question Adaptive Baseline Diagnostic Exam
+  const handleStartDiagnostic = async () => {
+    const certId = currentCert?.id || activeCertificationId || 'a0000000-0000-0000-0000-000000000001';
+    await launchDiagnosticExam(certId, startQuiz, navigate);
   };
 
   return (
@@ -253,41 +281,17 @@ export default function InsightsPage() {
           {activeTab === 'overview' && (
             <div className="animate-fade-in">
               
-              {/* Empty state alert when user has 0 attempts for this cert */}
-              {totalAttempted === 0 && (
-                <div
-                  className="card mb-6"
-                  style={{
-                    backgroundColor: 'var(--color-surface-subtle)',
-                    border: '1px dashed var(--color-primary)',
-                    padding: 'var(--space-6)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 'var(--space-4)',
-                  }}
-                >
-                  <div style={{ maxWidth: '650px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-1)' }}>
-                      <span style={{ fontSize: '1.25rem' }}>🎯</span>
-                      <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 'bold', margin: 0, color: 'var(--color-ink)' }}>
-                        No Practice Activity Recorded for {currentCert?.code || 'this Track'} Yet
-                      </h3>
-                    </div>
-                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)', margin: 0 }}>
-                      Complete your first 10-question practice set or domain drill to populate your readiness radar, memory box levels, and scaled score estimate with real-time data.
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleStartDiagnostic}
-                    className="btn btn-primary"
-                    style={{ whiteSpace: 'nowrap' }}
-                  >
-                    ⚡ Take Diagnostic Quiz
-                  </button>
-                </div>
-              )}
+              {/* Unified Composite Readiness Gauge & Pacing Cockpit */}
+              <CompositeReadinessGauge
+                readiness={compositeReadiness}
+                certSlug={selectedCertSlug}
+                certCode={currentCert?.code || 'CERT'}
+                onRefresh={() => {
+                  setTargetExamDate(getTargetExamDate(selectedCertSlug));
+                  refreshProgress(selectedCertSlug);
+                }}
+                onStartDiagnostic={handleStartDiagnostic}
+              />
 
               {/* Key KPI Stats Grid */}
               <div className="dashboard-stats mb-6">

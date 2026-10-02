@@ -495,7 +495,7 @@ export default function LearnPage() {
 
         {/* Action Buttons */}
         <div className="learn-actions">
-          {effectiveCertSlug === 'cisa' && (
+          {taskStatements.length > 0 && (
             <button
               onClick={() => setIsTasksOpen(true)}
               className="btn btn-secondary"
@@ -578,14 +578,12 @@ export default function LearnPage() {
           </button>
         </div>
 
-        {/* CISA 28th Edition Badge */}
-        {effectiveCertSlug === 'cisa' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <span className="badge badge-primary font-bold desktop-only" style={{ fontSize: '11px' }}>
-              ISACA 28th Edition (2024 Blueprint)
-            </span>
-          </div>
-        )}
+        {/* Dynamic Track Blueprint Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <span className="badge badge-primary font-bold desktop-only" style={{ fontSize: '11px' }}>
+            {currentCert?.code ? `${currentCert.code} Official Blueprint` : 'Official Blueprint'}
+          </span>
+        </div>
       </div>
 
       {loading ? (

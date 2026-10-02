@@ -1,10 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useProgressStore } from '../stores/progressStore';
 import { useLessonProgressStore } from '../stores/lessonProgressStore';
 import { useQuizStore } from '../stores/quizStore';
 import { supabase } from '../lib/supabase';
+import { CompositeReadinessGauge } from '../components/insights/CompositeReadinessGauge';
+import {
+  calculateCompositeReadiness,
+  launchDiagnosticExam,
+  getTargetExamDate,
+} from '../lib/scoring/readinessGauge';
 import type { Certification, Domain, Question } from '../types';
 
 export default function HomePage() {
@@ -14,14 +20,17 @@ export default function HomePage() {
   const [currentCert, setCurrentCert] = useState<Certification | null>(null);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [isLaunching, setIsLaunching] = useState(false);
+  const [targetExamDate, setTargetExamDate] = useState<string | null>(() => getTargetExamDate(activeCertificationSlug));
 
   const {
+    totalAttempted,
     streakDays,
     totalStudyMinutes,
     reviewDueCount,
     overallAccuracy,
     predictedScaledScore,
     irtEstimate,
+    boxCounts,
     recentSessions,
     domainSummaries,
     refreshProgress,
@@ -31,6 +40,7 @@ export default function HomePage() {
 
   useEffect(() => {
     refreshProgress(activeCertificationSlug);
+    setTargetExamDate(getTargetExamDate(activeCertificationSlug));
   }, [activeCertificationSlug, refreshProgress]);
 
   useEffect(() => {
@@ -58,6 +68,36 @@ export default function HomePage() {
   const dailyGoal = user?.daily_study_goal_minutes || 60;
   const certName = currentCert?.name || 'CISA (28th Edition Blueprint)';
   const dailyPercent = Math.min(100, Math.round((totalStudyMinutes / Math.max(1, dailyGoal)) * 100));
+
+  // Compute Unified Composite Readiness Index (Testing 55%, Syllabus 25%, Leitner 20%)
+  const compositeReadiness = useMemo(() => {
+    return calculateCompositeReadiness({
+      certSlug: activeCertificationSlug,
+      irtEstimate,
+      totalAttempted,
+      overallAccuracy,
+      boxCounts,
+      totalCertQuestions: currentCert?.total_exam_questions ? currentCert.total_exam_questions * 30 : 5000,
+      totalSubtopics: 0,
+      completedSubtopicsCount: completedSubtopicIds.size,
+      targetExamDate,
+    });
+  }, [
+    activeCertificationSlug,
+    irtEstimate,
+    totalAttempted,
+    overallAccuracy,
+    boxCounts,
+    currentCert,
+    completedSubtopicIds.size,
+    targetExamDate,
+  ]);
+
+  // Launch 20Q Adaptive Baseline Diagnostic
+  const handleStartDiagnostic = async () => {
+    const certId = currentCert?.id || 'a0000000-0000-0000-0000-000000000001';
+    await launchDiagnosticExam(certId, startQuiz, navigate);
+  };
 
   // Launch a 10Q domain drill
   const handleLaunchDomainDrill = async (domainId: string) => {
@@ -104,7 +144,7 @@ export default function HomePage() {
             Welcome back, {userName}! 👋
           </h1>
           <p className="text-muted" style={{ margin: 'var(--space-1) 0 0 0', fontSize: 'var(--text-sm)' }}>
-            Master core IS audit concepts with active recall and August 2024 blueprint weights.
+            Master core {currentCert?.code || 'certification'} objectives with active recall, psychometric IRT scoring, and blueprint weights.
           </p>
         </div>
 
@@ -178,27 +218,27 @@ export default function HomePage() {
             Structured Learning Journey
           </span>
           <span className="badge" style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', fontSize: '11px' }}>
-            {completedSubtopicIds.size} / 60 Lessons Completed
+            {completedSubtopicIds.size} Lessons Completed
           </span>
         </div>
 
         <h3 style={{ margin: 0, fontSize: 'var(--text-xl)', fontWeight: 'bold', color: '#FFFFFF' }}>
-          🎯 Official CISA 28th Edition Syllabus
+          🎯 Official {currentCert?.name || 'Certification'} Syllabus
         </h3>
         <p style={{ opacity: 0.9, fontSize: 'var(--text-sm)', margin: 'var(--space-2) 0 var(--space-4) 0', lineHeight: 1.5, color: '#FFFFFF' }}>
-          Follow the 5 domains, deep-dive submodules, and version 28 delta topics (AI in Audit, Zero Trust, DevSecOps).
+          Follow the {domains.length > 0 ? domains.length : 5} blueprint domains, comprehensive lessons, and exam objectives.
         </p>
 
         {/* Progress bar inside hero */}
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', opacity: 0.85, marginBottom: '4px', color: '#FFFFFF' }}>
             <span>Curriculum Progress</span>
-            <span>{Math.round((completedSubtopicIds.size / 60) * 100)}%</span>
+            <span>{compositeReadiness.components.syllabus.score}%</span>
           </div>
           <div style={{ width: '100%', height: '6px', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 'var(--radius-full)', overflow: 'hidden' }}>
             <div
               style={{
-                width: `${Math.round((completedSubtopicIds.size / 60) * 100)}%`,
+                width: `${compositeReadiness.components.syllabus.score}%`,
                 height: '100%',
                 backgroundColor: '#10B981',
                 borderRadius: 'var(--radius-full)',
@@ -235,7 +275,7 @@ export default function HomePage() {
             }}
             onClick={() => navigate('/practice')}
           >
-            150Q Mock Exam
+            Practice Exam Simulator
           </button>
         </div>
       </div>
@@ -270,13 +310,27 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* 4b. Unified Composite Readiness & Gauge to Excellence */}
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <CompositeReadinessGauge
+          readiness={compositeReadiness}
+          certSlug={activeCertificationSlug}
+          certCode={currentCert?.code || 'CERT'}
+          onRefresh={() => {
+            setTargetExamDate(getTargetExamDate(activeCertificationSlug));
+            refreshProgress(activeCertificationSlug);
+          }}
+          onStartDiagnostic={handleStartDiagnostic}
+        />
+      </div>
+
       {/* 5. Domain Readiness Blueprint Matrix */}
-      <div className="dashboard-section" style={{ marginTop: 'var(--space-8)' }}>
+      <div className="dashboard-section" style={{ marginTop: 'var(--space-6)' }}>
         <div className="dashboard-section-header">
           <div>
             <h3 style={{ margin: 0 }}>Blueprint Domain Mastery</h3>
             <p className="text-muted" style={{ fontSize: 'var(--text-xs)', margin: '2px 0 0 0' }}>
-              August 2024 ISACA weight distribution &amp; readiness
+              {currentCert?.code || 'Certification'} domain weight distribution &amp; readiness
             </p>
           </div>
           <button
