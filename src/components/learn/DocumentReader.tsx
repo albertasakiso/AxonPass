@@ -97,17 +97,42 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
   const [selectedVaultCert, setSelectedVaultCert] = useState<string>('all');
   const [viewingVaultDoc, setViewingVaultDoc] = useState<DocumentIngestionRecord | null>(null);
 
+  // Manuals filter (for certifications with multiple textbooks/editions)
+  const distinctManualTitles = useMemo(() => {
+    return Array.from(new Set(materials.map((m) => m.document_title).filter(Boolean))) as string[];
+  }, [materials]);
+
+  const [selectedManualFilter, setSelectedManualFilter] = useState<string>('all');
+
+  const filteredMaterials = useMemo(() => {
+    if (selectedManualFilter === 'all') return materials;
+    return materials.filter((m) => m.document_title === selectedManualFilter);
+  }, [materials, selectedManualFilter]);
+
+  // Mobile detection & Viewer Mode
+  const isMobile = typeof window !== 'undefined' && (
+    window.innerWidth < 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  );
+  const [viewerMode, setViewerMode] = useState<'google_docs' | 'native'>(isMobile ? 'google_docs' : 'native');
+
+  // Auto-switch to google docs mode on mobile when opening a vault document
+  useEffect(() => {
+    if (viewingVaultDoc && isMobile) {
+      setViewerMode('google_docs');
+    }
+  }, [viewingVaultDoc, isMobile]);
+
   const { toggleChapterComplete, isChapterCompleted } = useLessonProgressStore();
 
   // Initialize selected material
   useEffect(() => {
     if (activeMaterialId) {
-      const found = materials.find((m) => m.id === activeMaterialId);
+      const found = filteredMaterials.find((m) => m.id === activeMaterialId);
       if (found) setSelectedMaterial(found);
-    } else if (materials.length > 0 && !selectedMaterial) {
-      setSelectedMaterial(materials[0]);
+    } else if (filteredMaterials.length > 0 && (!selectedMaterial || !filteredMaterials.some(m => m.id === selectedMaterial.id))) {
+      setSelectedMaterial(filteredMaterials[0]);
     }
-  }, [activeMaterialId, materials, selectedMaterial]);
+  }, [activeMaterialId, filteredMaterials, selectedMaterial]);
 
   // Initialize selected subtopic if available
   useEffect(() => {
@@ -124,7 +149,7 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
   }, [activeCertificationSlug]);
 
   const currentIndex = selectedMaterial
-    ? materials.findIndex((m) => m.id === selectedMaterial.id)
+    ? filteredMaterials.findIndex((m) => m.id === selectedMaterial.id)
     : -1;
 
   const isCompleted = selectedMaterial ? isChapterCompleted(selectedMaterial.chapter_number ?? 0) : false;
@@ -146,13 +171,13 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
 
   const handlePrevChapter = () => {
     if (currentIndex > 0) {
-      handleSelectMaterial(materials[currentIndex - 1]);
+      handleSelectMaterial(filteredMaterials[currentIndex - 1]);
     }
   };
 
   const handleNextChapter = () => {
-    if (currentIndex < materials.length - 1) {
-      handleSelectMaterial(materials[currentIndex + 1]);
+    if (currentIndex < filteredMaterials.length - 1) {
+      handleSelectMaterial(filteredMaterials[currentIndex + 1]);
     }
   };
 
@@ -340,23 +365,72 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
             </div>
           </div>
 
+          {/* Quick Publication / Manual Filter Bar (if multiple manuals exist for this cert) */}
+          {activeTab === 'chapters' && distinctManualTitles.length > 1 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 16px',
+                backgroundColor: 'var(--color-bg)',
+                borderBottom: '1px solid var(--border-color)',
+                overflowX: 'auto',
+                scrollbarWidth: 'none',
+              }}
+            >
+              <span style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-ink-muted)', whiteSpace: 'nowrap' }}>
+                📖 Select Manual:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedManualFilter('all')}
+                className={`btn btn-xs ${selectedManualFilter === 'all' ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ borderRadius: 'var(--radius-full)', whiteSpace: 'nowrap', fontSize: '10px' }}
+              >
+                All Volumes ({materials.length})
+              </button>
+              {distinctManualTitles.map((title) => {
+                const count = materials.filter((m) => m.document_title === title).length;
+                const shortTitle = title.length > 34 ? title.slice(0, 32) + '...' : title;
+                return (
+                  <button
+                    key={title}
+                    type="button"
+                    onClick={() => setSelectedManualFilter(title)}
+                    className={`btn btn-xs ${selectedManualFilter === title ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ borderRadius: 'var(--radius-full)', whiteSpace: 'nowrap', fontSize: '10px' }}
+                    title={title}
+                  >
+                    {shortTitle} ({count} Ch)
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Quick Chapter Selector Pills for Chapter Mode */}
-          {activeTab === 'chapters' && materials.length > 0 && (
+          {activeTab === 'chapters' && filteredMaterials.length > 0 && (
             <div className="ereader-pills-bar">
-              {materials.map((m) => {
+              {filteredMaterials.map((m) => {
                 const isSelected = selectedMaterial?.id === m.id;
                 const chapterDone = isChapterCompleted(m.chapter_number ?? 0);
+                const isMultiDoc = distinctManualTitles.length > 1 && selectedManualFilter === 'all';
+                const docTag = isMultiDoc && m.document_title
+                  ? (m.document_title.includes('16th') ? '16th Ed' : m.document_title.includes('Leadership') ? 'CISO' : `Vol ${m.sort_order}`)
+                  : '';
                 const label = m.chapter_number === 0 
                   ? 'Ch. 0 Blueprint' 
-                  : `Ch. ${m.chapter_number}`;
+                  : `Ch. ${m.chapter_number}${docTag ? ` • ${docTag}` : ''}`;
                 return (
                   <button
                     key={m.id}
                     onClick={() => handleSelectMaterial(m)}
                     className={`ereader-pill-tab ${isSelected ? 'active' : ''}`}
+                    title={m.title}
                   >
                     <span className="pill-num">{chapterDone ? '✓ ' : ''}{label}</span>
-                    <span className="pill-title">{m.title.slice(0, 28)}...</span>
+                    <span className="pill-title">{m.title.slice(0, 26)}...</span>
                   </button>
                 );
               })}
@@ -370,30 +444,38 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
               <div className="ereader-sidebar-header">
                 <span>{activeTab === 'subtopics' ? 'Textbook Modules' : 'Blueprint Chapters'}</span>
                 <span style={{ fontFamily: 'var(--font-mono)' }}>
-                  {activeTab === 'subtopics' ? allSubtopics.length : materials.length}
+                  {activeTab === 'subtopics' ? allSubtopics.length : filteredMaterials.length}
                 </span>
               </div>
 
               <div className="ereader-sidebar-list">
                 {activeTab === 'chapters' ? (
-                  materials.map((m) => {
+                  filteredMaterials.map((m) => {
                     const isSelected = selectedMaterial?.id === m.id;
                     const chapterDone = isChapterCompleted(m.chapter_number ?? 0);
+                    const isMultiDoc = distinctManualTitles.length > 1 && selectedManualFilter === 'all';
                     return (
                       <div
                         key={m.id}
                         onClick={() => handleSelectMaterial(m)}
                         className={`ereader-sidebar-item ${isSelected ? 'active' : ''} ${chapterDone ? 'completed' : ''}`}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
                           <span className="ereader-sidebar-item-chapter">
                             Chapter {m.chapter_number}
                           </span>
-                          {chapterDone && (
-                            <span className="badge badge-success" style={{ fontSize: '10px' }}>
-                              ✓ Done
-                            </span>
-                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {isMultiDoc && m.document_title && (
+                              <span className="badge badge-secondary" style={{ fontSize: '9px', padding: '1px 5px' }}>
+                                {m.document_title.includes('16th') ? '16th Ed' : m.document_title.includes('Leadership') ? 'CISO' : 'Vol'}
+                              </span>
+                            )}
+                            {chapterDone && (
+                              <span className="badge badge-success" style={{ fontSize: '10px' }}>
+                                ✓ Done
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="ereader-sidebar-item-title">
                           {m.title}
@@ -791,29 +873,101 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Viewer Engine Toggle */}
+              <div
+                style={{
+                  display: 'flex',
+                  backgroundColor: 'var(--color-bg-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '2px',
+                  border: '1px solid var(--border-color)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setViewerMode('google_docs')}
+                  className={`btn btn-xs ${viewerMode === 'google_docs' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '10px', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}
+                  title="Mobile-Safe HTML5 Canvas Renderer (Bypasses Chrome mobile iframe blocks)"
+                >
+                  ⚡ Mobile HTML5
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewerMode('native')}
+                  className={`btn btn-xs ${viewerMode === 'native' ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ fontSize: '10px', padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}
+                  title="Direct PDF Stream (Desktop / Native Plugin)"
+                >
+                  📄 Direct PDF
+                </button>
+              </div>
+
               {viewingVaultDoc.public_url && (
                 <a
                   href={viewingVaultDoc.public_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn btn-xs btn-secondary"
-                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  className="btn btn-xs btn-primary font-bold"
+                  style={{
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                  }}
+                  title="Open in your phone's native PDF reader (Google Drive, Adobe Acrobat, etc.)"
                 >
-                  <span>⤢</span> Fullscreen Tab
+                  <span>📲</span> Open in Device App
+                </a>
+              )}
+
+              {viewingVaultDoc.public_url && (
+                <a
+                  href={viewingVaultDoc.public_url}
+                  download={viewingVaultDoc.file_name}
+                  className="btn btn-xs btn-secondary"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}
+                  title="Download File Directly"
+                >
+                  <span>⬇</span>
                 </a>
               )}
 
               <button
                 type="button"
                 onClick={() => setViewingVaultDoc(null)}
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-secondary"
                 style={{ padding: '4px 12px', fontWeight: 'bold' }}
               >
-                ✕ Close Viewer
+                ✕ Close
               </button>
             </div>
           </div>
+
+          {/* Mobile Chrome Assistance Alert */}
+          {isMobile && (
+            <div
+              style={{
+                backgroundColor: 'rgba(254, 243, 199, 0.95)',
+                color: '#92400e',
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '11px',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+              }}
+            >
+              <span>
+                💡 <strong>Mobile Chrome Alert:</strong> If preview does not render, use <strong>Mobile HTML5</strong> mode or tap <strong>Open in Device App</strong>.
+              </span>
+            </div>
+          )}
 
           {/* Embedded Viewer Canvas */}
           <div
@@ -825,18 +979,33 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
               overflow: 'hidden',
               boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
               display: 'flex',
+              position: 'relative',
             }}
           >
             {viewingVaultDoc.public_url ? (
-              <iframe
-                src={`${viewingVaultDoc.public_url}#toolbar=1&navpanes=1`}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                }}
-                title={viewingVaultDoc.file_name}
-              />
+              viewerMode === 'google_docs' ? (
+                <iframe
+                  src={`https://docs.google.com/viewer?url=${encodeURIComponent(viewingVaultDoc.public_url)}&embedded=true`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                  }}
+                  title={viewingVaultDoc.file_name}
+                  allow="fullscreen"
+                />
+              ) : (
+                <iframe
+                  src={`${viewingVaultDoc.public_url}#toolbar=1&navpanes=1`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                  }}
+                  title={viewingVaultDoc.file_name}
+                  allow="fullscreen"
+                />
+              )
             ) : (
               <div style={{ margin: 'auto', textAlign: 'center', padding: 'var(--space-8)' }}>
                 <p className="text-muted">Document storage URL unavailable.</p>

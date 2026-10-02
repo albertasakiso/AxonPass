@@ -24,12 +24,13 @@ interface AuthState {
   signUp: (email: string, password: string, fullName?: string) => Promise<{ success: boolean; requiresEmailConfirmation: boolean; message: string }>;
   signInWithMagicLink: (email: string) => Promise<boolean>;
   resetPassword: (email: string) => Promise<boolean>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<boolean>;
   signOut: () => Promise<void>;
   clearError: () => void;
   clearSuccessMessage: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   isAuthenticated: false,
@@ -333,6 +334,34 @@ export const useAuthStore = create<AuthState>((set) => ({
       return true;
     } catch (err: any) {
       set({ error: err.message || 'Password reset request failed', isLoading: false });
+      return false;
+    }
+  },
+
+  updateProfile: async (updates: Partial<UserProfile>) => {
+    const currentUser = get().user;
+    if (!currentUser) return false;
+    set({ isLoading: true, error: null });
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          ...updates,
+          last_active_at: new Date().toISOString(),
+        })
+        .eq('id', currentUser.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        set({ user: data as UserProfile, isLoading: false, successMessage: 'Profile updated successfully.' });
+        return true;
+      }
+      set({ isLoading: false });
+      return false;
+    } catch (err: any) {
+      set({ error: err.message || 'Profile update failed', isLoading: false });
       return false;
     }
   },

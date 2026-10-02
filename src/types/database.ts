@@ -138,9 +138,14 @@ export interface UserProfile {
   daily_study_goal_minutes: number;
   timezone: string;
   onboarding_state: 'pending' | 'in_progress' | 'completed';
-  role: 'owner';
+  role: 'owner' | 'admin' | 'learner' | 'student' | 'user';
   created_at: string;
   last_active_at: string | null;
+  target_exam_date?: string | null;
+  streak_days?: number;
+  avatar_url?: string | null;
+  readiness_score?: number;
+  total_study_minutes?: number;
 }
 
 export interface UserProgress {

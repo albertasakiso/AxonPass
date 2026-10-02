@@ -234,6 +234,17 @@ export default function LearnPage() {
   const partATopics = useMemo(() => filteredTopics.filter(t => t.part === 'A'), [filteredTopics]);
   const partBTopics = useMemo(() => filteredTopics.filter(t => t.part === 'B'), [filteredTopics]);
 
+  // Distinct chapter and publication counts for the active certification
+  const distinctChapterCount = useMemo(() => {
+    const nums = new Set(studyMaterials.map((m) => m.chapter_number).filter((n) => n !== null && n !== undefined));
+    return nums.size;
+  }, [studyMaterials]);
+
+  const distinctManualCount = useMemo(() => {
+    const titles = new Set(studyMaterials.map((m) => m.document_title).filter(Boolean));
+    return titles.size;
+  }, [studyMaterials]);
+
   const handleStartDomainQuiz = async (domainId: string) => {
     if (!currentCert) return;
     const { data: qData } = await supabase
@@ -387,7 +398,7 @@ export default function LearnPage() {
             role="tab"
             aria-selected={viewMode === 'syllabus'}
           >
-            <span>🌳</span> Syllabus (60)
+            <span>🌳</span> Syllabus ({allCertTopics.length > 0 ? allCertTopics.length : topics.length} Topics)
           </button>
 
           <button
@@ -396,7 +407,7 @@ export default function LearnPage() {
             role="tab"
             aria-selected={viewMode === 'documents'}
           >
-            <span>📖</span> Review Manual (5 Ch)
+            <span>📖</span> Review Manual ({distinctChapterCount > 0 ? distinctChapterCount : studyMaterials.length} Ch{distinctManualCount > 1 ? ` • ${distinctManualCount} Manuals` : ''})
           </button>
 
           <button
