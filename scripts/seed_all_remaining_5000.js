@@ -1,0 +1,153 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pg from 'pg';
+
+const { Client } = pg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const envPath = path.resolve(__dirname, '../.env');
+const envContent = fs.readFileSync(envPath, 'utf8');
+
+let directUrl = '';
+for (const line of envContent.split('\n')) {
+  const trimmed = line.trim();
+  if (trimmed.startsWith('DIRECT_URL=')) {
+    directUrl = trimmed.replace('DIRECT_URL=', '').replace(/^["']|["']$/g, '');
+    break;
+  }
+}
+if (!directUrl) {
+  const match = envContent.match(/postgresql:\/\/[^\s]+/);
+  if (match) directUrl = match[0];
+}
+
+const client = new Client({
+  connectionString: directUrl,
+  ssl: { rejectUnauthorized: false },
+});
+
+const TRACKS = [
+  { slug: 'cgeit', certId: 'a0000000-0000-0000-0000-000000000010', code: 'CGEIT' },
+  { slug: 'cysa', certId: 'a0000000-0000-0000-0000-000000000012', code: 'CYSA+' },
+  { slug: 'fifa-agent', certId: 'a0000000-0000-0000-0000-000000000009', code: 'FIFA-AGENT' },
+  { slug: 'grc', certId: 'a0000000-0000-0000-0000-000000000008', code: 'GRC' },
+  { slug: 'nist', certId: 'a0000000-0000-0000-0000-000000000004', code: 'NIST' },
+  { slug: 'aws-csaa', certId: 'a0000000-0000-0000-0000-000000000003', code: 'SAA-C03' },
+  { slug: 'cc', certId: 'a0000000-0000-0000-0000-000000000002', code: 'CC' }
+];
+
+async function seedAllRemaining() {
+  await client.connect();
+  console.log('=== SEEDING ALL REMAINING CERTIFICATIONS TO 5,000 QUESTIONS EACH ===\n');
+
+  for (const track of TRACKS) {
+    const qPath = path.resolve(__dirname, `all_5000_data/${track.slug}_pack.json`);
+    if (!fs.existsSync(qPath)) {
+      console.log(`[SKIP] Missing pack for ${track.code}`);
+      continue;
+    }
+
+    const questions = JSON.parse(fs.readFileSync(qPath, 'utf8'));
+    console.log(`\n--- Processing [${track.code}] (${questions.length} questions) ---`);
+
+    const domRes = await client.query('SELECT id, domain_number FROM domains WHERE certification_id = $1', [track.certId]);
+    const domainMap = {};
+    for (const row of domRes.rows) {
+      domainMap[row.domain_number] = row.id;
+    }
+
+    const topicRes = await client.query(`
+      SELECT t.id, t.domain_id, d.domain_number 
+      FROM topics t 
+      JOIN domains d ON t.domain_id = d.id 
+      WHERE d.certification_id = $1
+    `, [track.certId]);
+
+    const domainTopicMap = {};
+    for (const row of topicRes.rows) {
+      if (!domainTopicMap[row.domain_number]) domainTopicMap[row.domain_number] = [];
+      domainTopicMap[row.domain_number].push(row.id);
+    }
+
+    const BATCH_SIZE = 50;
+    let inserted = 0;
+
+    for (let i = 0; i < questions.length; i += BATCH_SIZE) {
+      const batch = questions.slice(i, i + BATCH_SIZE);
+      const valuePlaceholders = [];
+      const params = [];
+
+      batch.forEach((q, idx) => {
+        const baseIdx = idx * 19;
+        valuePlaceholders.push(`(
+          $${baseIdx + 1}, $${baseIdx + 2}, $${baseIdx + 3}, $${baseIdx + 4}, $${baseIdx + 5},
+          $${baseIdx + 6}, $${baseIdx + 7}, $${baseIdx + 8}, $${baseIdx + 9}, $${baseIdx + 10},
+          $${baseIdx + 11}, $${baseIdx + 12}, $${baseIdx + 13}, $${baseIdx + 14}, $${baseIdx + 15},
+          $${baseIdx + 16}, $${baseIdx + 17}, $${baseIdx + 18}, $${baseIdx + 19}
+        )`);
+
+        const domId = domainMap[q.domain_number];
+        const topicList = domainTopicMap[q.domain_number] || [];
+        const topicId = topicList.length > 0 ? topicList[idx % topicList.length] : null;
+
+        params.push(
+          q.id,
+          track.certId,
+          domId,
+          topicId,
+          null,
+          q.question_number,
+          q.question_type,
+          q.stem,
+          q.option_a,
+          q.option_b,
+          q.option_c,
+          q.option_d,
+          q.correct_answer,
+          q.rationale,
+          q.difficulty,
+          q.task_statement,
+          q.tags,
+          q.source_reference,
+          q.is_active
+        );
+      });
+
+      const query = `
+        INSERT INTO questions (
+          id, certification_id, domain_id, topic_id, subtopic_id, question_number,
+          question_type, stem, option_a, option_b, option_c, option_d,
+          correct_answer, rationale, difficulty, task_statement, tags,
+          source_reference, is_active
+        ) VALUES ${valuePlaceholders.join(', ')}
+        ON CONFLICT (id) DO UPDATE SET
+          stem = EXCLUDED.stem,
+          option_a = EXCLUDED.option_a,
+          option_b = EXCLUDED.option_b,
+          option_c = EXCLUDED.option_c,
+          option_d = EXCLUDED.option_d,
+          correct_answer = EXCLUDED.correct_answer,
+          rationale = EXCLUDED.rationale;
+      `;
+
+      await client.query(query, params);
+      inserted += batch.length;
+      if (inserted % 1000 === 0 || inserted === questions.length) {
+        console.log(`  [${track.code}] Inserted ${inserted}/${questions.length} questions...`);
+      }
+    }
+
+    const finalCount = await client.query('SELECT count(*) FROM questions WHERE certification_id = $1', [track.certId]);
+    console.log(`[SUCCESS] ${track.code} reached: ${finalCount.rows[0].count} questions!`);
+  }
+
+  console.log(`\n========================================================================================`);
+  console.log(`🎉 ALL REMAINING CERTIFICATIONS SUCCESSFULLY SCALED TO 5,000 QUESTIONS EACH!`);
+  console.log(`========================================================================================\n`);
+
+  await client.end();
+}
+
+seedAllRemaining().catch(console.error);

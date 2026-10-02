@@ -1,0 +1,53 @@
+# Environment & Secret Credentials (CRITICAL: NEVER COMMIT SECRETS)
+.env
+.env*.local
+*.env
+supabase/.temp
+
+# Heavy Machine Learning & Vector Store Artifacts (>100MB exceeds GitHub push limits)
+ml_engine/*.npz
+ml_engine/chunks_metadata.json
+ml_engine/__pycache__/
+*.npz
+
+# Proprietary Document Repositories & Raw Manuals
+my_documents/
+scripts/*_data/
+scripts/cisa_28th_extracted/
+scripts/temp_spec_*/
+
+# Dependencies & Build Outputs
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Python Environments & Bytecode Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# Editor directories and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
