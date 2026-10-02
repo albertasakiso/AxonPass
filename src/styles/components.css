@@ -847,6 +847,11 @@
   animation: timerPulse 1s infinite;
 }
 
+.timer.timer-paused {
+  color: var(--color-warning);
+  opacity: 0.9;
+}
+
 /* ──────────────────────────────────────────────
    ANIMATIONS
    ────────────────────────────────────────────── */

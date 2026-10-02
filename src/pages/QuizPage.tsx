@@ -184,6 +184,8 @@ export default function QuizPage() {
     timeRemainingSeconds,
     isTimerRunning,
     isPaused,
+    isAutoPausedForReview,
+    autoPauseSource,
     feedbackPolicy,
     isCompleted,
     result,
@@ -196,6 +198,7 @@ export default function QuizPage() {
     toggleFlag,
     pauseQuiz,
     resumeQuiz,
+    setReviewPause,
     tickTimer,
     finishQuiz,
     resetQuiz,
@@ -297,6 +300,8 @@ export default function QuizPage() {
           totalQuestions={questions.length}
           isRunning={isTimerRunning}
           isPaused={isPaused}
+          isAutoPaused={isAutoPausedForReview}
+          autoPauseSource={autoPauseSource}
           onTick={tickTimer}
           onPause={pauseQuiz}
           onResume={resumeQuiz}
@@ -306,7 +311,10 @@ export default function QuizPage() {
           <button
             type="button"
             className="btn btn-sm btn-secondary"
-            onClick={() => setShowFormulaDrawer(true)}
+            onClick={() => {
+              setReviewPause(true, 'formula_drawer');
+              setShowFormulaDrawer(true);
+            }}
             title="Formula Reference Sheet"
           >
             🧮 Formulas
@@ -316,7 +324,7 @@ export default function QuizPage() {
             type="button"
             className="btn btn-sm btn-outline-danger"
             onClick={() => {
-              pauseQuiz();
+              setReviewPause(true, 'stop_quiz');
               setShowStopModal(true);
             }}
             title="Stop or Abandon Quiz Session"
@@ -336,7 +344,10 @@ export default function QuizPage() {
           <button
             type="button"
             className="btn btn-sm btn-secondary"
-            onClick={() => setShowConfirmFinish(true)}
+            onClick={() => {
+              setReviewPause(true, 'confirm_finish');
+              setShowConfirmFinish(true);
+            }}
           >
             Finish Exam
           </button>
@@ -377,7 +388,10 @@ export default function QuizPage() {
         totalQuestions={questions.length}
         isFlagged={isFlagged}
         onToggleFlag={() => toggleFlag(currentQ.id)}
-        onOpenReviewGrid={() => setShowGridModal(true)}
+        onOpenReviewGrid={() => {
+          setReviewPause(true, 'grid_modal');
+          setShowGridModal(true);
+        }}
       />
 
       {/* Active Question Card */}
@@ -407,7 +421,10 @@ export default function QuizPage() {
         {/* Center: Question Matrix Drawer Toggle */}
         <button
           type="button"
-          onClick={() => setShowGridModal(true)}
+          onClick={() => {
+            setReviewPause(true, 'grid_modal');
+            setShowGridModal(true);
+          }}
           className="btn btn-secondary btn-sm"
           style={{ minHeight: '42px', padding: '0 12px', fontWeight: 'bold' }}
           title="Open Question Navigator"
@@ -469,9 +486,13 @@ export default function QuizPage() {
               flaggedIds={flaggedQuestionIds}
               onSelectIndex={(idx) => {
                 goToQuestion(idx);
+                setReviewPause(false);
                 setShowGridModal(false);
               }}
-              onClose={() => setShowGridModal(false)}
+              onClose={() => {
+                setReviewPause(false);
+                setShowGridModal(false);
+              }}
             />
           </div>
         </div>
@@ -482,11 +503,17 @@ export default function QuizPage() {
         <div className="modal-backdrop" style={{ zIndex: 'var(--z-modal)' }}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
             <div className="modal-header">
-              <h3>🧮 Exam Formula Reference</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>🧮</span>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'bold' }}>Exam Formula Reference</h3>
+              </div>
               <button
                 type="button"
                 className="btn btn-sm btn-ghost"
-                onClick={() => setShowFormulaDrawer(false)}
+                onClick={() => {
+                  setReviewPause(false);
+                  setShowFormulaDrawer(false);
+                }}
               >
                 ✕
               </button>
@@ -522,7 +549,10 @@ export default function QuizPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => setShowFormulaDrawer(false)}
+                onClick={() => {
+                  setReviewPause(false);
+                  setShowFormulaDrawer(false);
+                }}
               >
                 Close Sheet
               </button>
@@ -545,7 +575,7 @@ export default function QuizPage() {
                 className="btn btn-sm btn-ghost"
                 onClick={() => {
                   setShowStopModal(false);
-                  resumeQuiz();
+                  setReviewPause(false);
                 }}
               >
                 ✕
@@ -579,7 +609,7 @@ export default function QuizPage() {
                 className="btn btn-secondary btn-sm"
                 onClick={() => {
                   setShowStopModal(false);
-                  resumeQuiz();
+                  setReviewPause(false);
                 }}
               >
                 Resume Quiz
@@ -592,6 +622,7 @@ export default function QuizPage() {
                   style={{ borderColor: '#ef4444', color: '#ef4444' }}
                   onClick={() => {
                     setShowStopModal(false);
+                    setReviewPause(false);
                     resetQuiz();
                     navigate('/practice');
                   }}
@@ -605,6 +636,7 @@ export default function QuizPage() {
                   className="btn btn-primary btn-sm font-bold"
                   onClick={async () => {
                     setShowStopModal(false);
+                    setReviewPause(false);
                     await finishQuiz();
                   }}
                   title="Grade answered questions and view results"
@@ -626,7 +658,10 @@ export default function QuizPage() {
               <button
                 type="button"
                 className="btn btn-sm btn-ghost"
-                onClick={() => setShowConfirmFinish(false)}
+                onClick={() => {
+                  setReviewPause(false);
+                  setShowConfirmFinish(false);
+                }}
               >
                 ✕
               </button>
@@ -649,7 +684,10 @@ export default function QuizPage() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => setShowConfirmFinish(false)}
+                onClick={() => {
+                  setReviewPause(false);
+                  setShowConfirmFinish(false);
+                }}
               >
                 Keep Reviewing
               </button>
@@ -657,6 +695,7 @@ export default function QuizPage() {
                 type="button"
                 className="btn btn-primary"
                 onClick={async () => {
+                  setReviewPause(false);
                   setShowConfirmFinish(false);
                   await finishQuiz();
                 }}

@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import type { Question } from '../../types';
+import { useQuizStore } from '../../stores/quizStore';
 import AiExplainerDrawer from './AiExplainerDrawer';
 
 interface RationalePanelProps {
@@ -20,6 +21,17 @@ export default function RationalePanel({
   isCorrect,
 }: RationalePanelProps) {
   const [showAiExplainer, setShowAiExplainer] = useState(false);
+  const setReviewPause = useQuizStore((s) => s.setReviewPause);
+
+  const handleOpenAiExplainer = () => {
+    setReviewPause(true, 'ai_explainer');
+    setShowAiExplainer(true);
+  };
+
+  const handleCloseAiExplainer = () => {
+    setReviewPause(false);
+    setShowAiExplainer(false);
+  };
 
   return (
     <div
@@ -49,7 +61,7 @@ export default function RationalePanel({
       <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
         <button
           type="button"
-          onClick={() => setShowAiExplainer(true)}
+          onClick={handleOpenAiExplainer}
           className="btn btn-sm btn-primary"
           style={{
             display: 'inline-flex',
@@ -101,7 +113,7 @@ export default function RationalePanel({
         <AiExplainerDrawer
           question={question}
           selectedOption={selectedOption}
-          onClose={() => setShowAiExplainer(false)}
+          onClose={handleCloseAiExplainer}
         />
       )}
     </div>

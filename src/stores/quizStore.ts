@@ -43,6 +43,9 @@ interface QuizState {
   questionStartTimestamp: number;
   isTimerRunning: boolean;
   isPaused: boolean;
+  isAutoPausedForReview: boolean;
+  autoPauseSource: string | null;
+  reviewTimeSeconds: number;
 
   // Mode settings
   feedbackPolicy: 'immediate' | 'delayed';
@@ -70,6 +73,7 @@ interface QuizState {
   toggleFlag: (questionId: string) => void;
   pauseQuiz: () => void;
   resumeQuiz: () => void;
+  setReviewPause: (pause: boolean, source?: string) => void;
   tickTimer: () => void;
   finishQuiz: (userId?: string) => Promise<QuizResult>;
   resetQuiz: () => void;
@@ -94,6 +98,9 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   questionStartTimestamp: Date.now(),
   isTimerRunning: false,
   isPaused: false,
+  isAutoPausedForReview: false,
+  autoPauseSource: null,
+  reviewTimeSeconds: 0,
   feedbackPolicy: 'immediate',
   isCompleted: false,
   result: null,
@@ -145,6 +152,9 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       questionStartTimestamp: Date.now(),
       isTimerRunning: true,
       isPaused: false,
+      isAutoPausedForReview: false,
+      autoPauseSource: null,
+      reviewTimeSeconds: 0,
       feedbackPolicy,
       isCompleted: false,
       result: null,
@@ -324,8 +334,46 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     }
   },
 
-  pauseQuiz: () => set({ isPaused: true, isTimerRunning: false }),
-  resumeQuiz: () => set({ isPaused: false, isTimerRunning: true }),
+  pauseQuiz: () =>
+    set({
+      isPaused: true,
+      isTimerRunning: false,
+      isAutoPausedForReview: false,
+      autoPauseSource: null,
+    }),
+
+  resumeQuiz: () =>
+    set({
+      isPaused: false,
+      isTimerRunning: true,
+      isAutoPausedForReview: false,
+      autoPauseSource: null,
+    }),
+
+  setReviewPause: (pause: boolean, source = 'review') => {
+    const { isTimerRunning, isPaused, isAutoPausedForReview } = get();
+    if (pause) {
+      // Freeze countdown if active and not already manually paused
+      if (isTimerRunning && !isPaused) {
+        set({
+          isPaused: true,
+          isTimerRunning: false,
+          isAutoPausedForReview: true,
+          autoPauseSource: source,
+        });
+      }
+    } else {
+      // Auto-resume only if paused specifically by auto-pause review
+      if (isAutoPausedForReview) {
+        set({
+          isPaused: false,
+          isTimerRunning: true,
+          isAutoPausedForReview: false,
+          autoPauseSource: null,
+        });
+      }
+    }
+  },
 
   tickTimer: () => {
     const { timeRemainingSeconds, isTimerRunning, isPaused, timeTakenSeconds } = get();
@@ -487,6 +535,9 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       isAnswerSubmitted: false,
       isTimerRunning: false,
       isPaused: false,
+      isAutoPausedForReview: false,
+      autoPauseSource: null,
+      reviewTimeSeconds: 0,
       isCompleted: false,
       result: null,
     });

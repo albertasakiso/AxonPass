@@ -22,6 +22,7 @@ import {
   setActiveMachine,
   type AiClusterMachine,
 } from '../../lib/ai/aiClusterStore';
+import { useQuizStore } from '../../stores/quizStore';
 
 interface AiExplainerDrawerProps {
   question: Question;
@@ -36,6 +37,17 @@ export default function AiExplainerDrawer({
   onClose,
   onPracticeSimilarTopic,
 }: AiExplainerDrawerProps) {
+  const isAutoPaused = useQuizStore((s) => s.isAutoPausedForReview);
+
+  // Automatically pause exam countdown while candidate digests cognitive reasoning
+  useEffect(() => {
+    const { setReviewPause } = useQuizStore.getState();
+    setReviewPause(true, 'ai_explainer');
+    return () => {
+      useQuizStore.getState().setReviewPause(false);
+    };
+  }, []);
+
   // Engine Tab State
   const [activeEngine, setActiveEngine] = useState<'edge' | 'ollama'>('edge');
 
@@ -204,15 +216,40 @@ export default function AiExplainerDrawer({
             </div>
           </div>
 
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost"
-            onClick={onClose}
-            aria-label="Close explainer"
-            style={{ fontSize: '1.2rem', padding: '4px 8px' }}
-          >
-            ✕
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            {isAutoPaused && (
+              <span
+                className="badge"
+                style={{
+                  fontSize: '11px',
+                  padding: '3px 8px',
+                  borderRadius: 'var(--radius-full)',
+                  backgroundColor: '#fffbeb',
+                  color: '#b45309',
+                  border: '1px solid #f59e0b',
+                  fontWeight: 'bold',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  boxShadow: '0 1px 2px rgba(245, 158, 11, 0.15)',
+                }}
+                title="Timer is safely frozen while you absorb cognitive rationales"
+              >
+                <span>⏸</span>
+                <span>Exam Timer Paused for Review</span>
+              </span>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={onClose}
+              aria-label="Close explainer"
+              style={{ fontSize: '1.2rem', padding: '4px 8px' }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Engine Switcher Tab Bar */}
