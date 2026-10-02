@@ -74,6 +74,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             });
           } else {
             // Create fallback user profile
+            const isSuperAdmin = session.user.email?.toLowerCase() === 'apullahalbert@gmail.com';
             const fallbackProfile: UserProfile = {
               id: session.user.id,
               email: session.user.email || '',
@@ -82,7 +83,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
               daily_study_goal_minutes: 60,
               timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
               onboarding_state: 'pending',
-              role: 'owner',
+              role: isSuperAdmin ? 'owner' : 'learner',
+              status: 'active',
               created_at: new Date().toISOString(),
               last_active_at: new Date().toISOString(),
             };
@@ -103,6 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           }
         } catch (profileErr) {
           console.warn('Profile fetch fallback:', profileErr);
+          const isSuperAdmin = session.user.email?.toLowerCase() === 'apullahalbert@gmail.com';
           const minimalProfile: UserProfile = {
             id: session.user.id,
             email: session.user.email || '',
@@ -111,7 +114,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             daily_study_goal_minutes: 60,
             timezone: 'UTC',
             onboarding_state: 'pending',
-            role: 'owner',
+            role: isSuperAdmin ? 'owner' : 'learner',
+            status: 'active',
             created_at: new Date().toISOString(),
             last_active_at: new Date().toISOString(),
           };
@@ -135,6 +139,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             .eq('id', session.user.id)
             .maybeSingle();
 
+          const isSuperAdmin = session.user.email?.toLowerCase() === 'apullahalbert@gmail.com';
           const activeProfile: UserProfile = (profile as UserProfile) || {
             id: session.user.id,
             email: session.user.email || '',
@@ -143,7 +148,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             daily_study_goal_minutes: 60,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             onboarding_state: 'pending',
-            role: 'owner',
+            role: isSuperAdmin ? 'owner' : 'learner',
+            status: 'active',
             created_at: new Date().toISOString(),
             last_active_at: new Date().toISOString(),
           };
@@ -196,6 +202,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           .eq('id', data.user.id)
           .maybeSingle();
 
+        if (profile?.status === 'suspended') {
+          await supabase.auth.signOut();
+          set({
+            error: 'This account has been suspended by an administrator. Please contact support.',
+            isLoading: false,
+            isAuthenticated: false,
+            user: null,
+          });
+          return false;
+        }
+
+        const isSuperAdmin = normalizedEmail === 'apullahalbert@gmail.com';
         const userProfile: UserProfile = (profile as UserProfile) || {
           id: data.user.id,
           email: data.user.email || normalizedEmail,
@@ -204,7 +222,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           daily_study_goal_minutes: 60,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           onboarding_state: 'pending',
-          role: 'owner',
+          role: isSuperAdmin ? 'owner' : 'learner',
+          status: 'active',
           created_at: new Date().toISOString(),
           last_active_at: new Date().toISOString(),
         };
@@ -248,6 +267,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       // Check if session was returned immediately (auto-confirm) or confirmation email was sent
       if (data.session) {
+        const isSuperAdmin = normalizedEmail === 'apullahalbert@gmail.com';
         const userProfile: UserProfile = {
           id: data.user!.id,
           email: data.user!.email || normalizedEmail,
@@ -256,7 +276,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           daily_study_goal_minutes: 60,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           onboarding_state: 'pending',
-          role: 'owner',
+          role: isSuperAdmin ? 'owner' : 'learner',
+          status: 'active',
           created_at: new Date().toISOString(),
           last_active_at: new Date().toISOString(),
         };

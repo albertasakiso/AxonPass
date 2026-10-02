@@ -17,6 +17,7 @@ import type {
 } from '../types';
 import { db, enqueueSync } from '../lib/db';
 import { advanceBox, resetBox, createInitialProgress } from '../lib/leitner';
+import { useAuthStore } from './authStore';
 
 interface QuizState {
   // Session info
@@ -140,9 +141,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     });
 
     // Save session in Dexie
+    const currentUserId = useAuthStore.getState().user?.id || 'anonymous';
     const sessionRecord: QuizSession = {
       id: sessionId,
-      user_id: 'local_user',
+      user_id: currentUserId,
       certification_id: certificationId,
       domain_id: domainId,
       topic_id: null,
@@ -169,7 +171,8 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     set({ selectedAnswer: option });
   },
 
-  submitAnswer: async (userId = 'local_user') => {
+  submitAnswer: async (userId) => {
+    const currentUserId = userId || useAuthStore.getState().user?.id || 'anonymous';
     const {
       questions,
       currentIndex,
@@ -218,7 +221,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     // Update Leitner progress in Dexie & enqueue sync
     try {
       const existingProgress = await db.userProgress
-        .where({ user_id: userId, question_id: currentQ.id })
+        .where({ user_id: currentUserId, question_id: currentQ.id })
         .first();
 
       let updatedProgress;
@@ -228,7 +231,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
           : resetBox(existingProgress);
         updatedProgress = { ...existingProgress, ...changes, updated_at: new Date().toISOString() };
       } else {
-        const initial = createInitialProgress(userId, currentQ.id, currentQ.domain_id, currentQ.topic_id);
+        const initial = createInitialProgress(currentUserId, currentQ.id, currentQ.domain_id, currentQ.topic_id);
         const changes = isCorrect
           ? advanceBox(initial as any)
           : resetBox(initial as any);
@@ -433,9 +436,10 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
     // Update Dexie & sync queue
     if (sessionId) {
+      const activeUserId = userId || useAuthStore.getState().user?.id || 'anonymous';
       const completedSession: QuizSession = {
         id: sessionId,
-        user_id: userId,
+        user_id: activeUserId,
         certification_id: certificationId,
         domain_id: domainId,
         topic_id: null,

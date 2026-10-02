@@ -32,7 +32,7 @@ import type { Certification } from '../types';
 export default function InsightsPage() {
   const navigate = useNavigate();
   const { startQuiz } = useQuizStore();
-  const { activeCertificationSlug, setActiveCertification } = useAuthStore();
+  const { activeCertificationSlug, setActiveCertification, user } = useAuthStore();
 
   const {
     activeCertificationId,
@@ -169,8 +169,13 @@ export default function InsightsPage() {
       {/* Header Banner */}
       <div className="learn-header-banner">
         <div>
-          <div className="learn-header-badge">
+          <div className="learn-header-badge" style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
             <span>📈</span> Real-Time Diagnostic Intelligence &amp; Analytics
+            {user && (
+              <span style={{ opacity: 0.85, fontWeight: 'normal', borderLeft: '1px solid rgba(255,255,255,0.3)', paddingLeft: '8px' }}>
+                👤 {user.full_name || user.email}
+              </span>
+            )}
           </div>
           <h1 className="learn-header-title">
             {currentCert?.name || 'Certification'} Performance Insights

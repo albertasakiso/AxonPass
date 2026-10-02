@@ -5,7 +5,9 @@
    =================================================================== */
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuthStore } from '../stores/authStore';
 import { ImportWizard } from '../components/admin/ImportWizard';
 import { QuestionBankManager } from '../components/admin/QuestionBankManager';
 import { BatchHistoryView } from '../components/admin/BatchHistoryView';
@@ -17,6 +19,10 @@ import { QUESTIONS_TEMPLATE, ANSWERS_TEMPLATE, type Certification, type Domain }
 type AdminTab = 'users' | 'ai-audit' | 'import' | 'questions' | 'templates' | 'batches' | 'overview';
 
 export default function AdminPage() {
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
+
   const [activeTab, setActiveTab] = useState<AdminTab>('ai-audit');
   const [certifications, setCertifications] = useState<Certification[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
@@ -86,6 +92,26 @@ export default function AdminPage() {
     { id: 'batches', label: '📜 Batch History & Audit', icon: '📜' },
     { id: 'overview', label: '📊 System Overview', icon: '📊' },
   ];
+
+  if (!isAdmin) {
+    return (
+      <div style={{ padding: 'var(--space-12) var(--space-4)', textAlign: 'center', maxWidth: '520px', margin: '0 auto' }}>
+        <div style={{ fontSize: '3rem', marginBottom: 'var(--space-4)' }}>🛡️</div>
+        <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 'bold', marginBottom: 'var(--space-2)' }}>
+          Access Restricted
+        </h2>
+        <p style={{ color: 'var(--color-ink-muted)', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-relaxed)', marginBottom: 'var(--space-6)' }}>
+          The Enterprise Admin &amp; Content Studio is restricted to system administrators and owners. Your current role is <strong>{user?.role || 'learner'}</strong>.
+        </p>
+        <button
+          onClick={() => navigate('/')}
+          className="btn btn-primary"
+        >
+          ← Return to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ paddingBottom: 'var(--space-12)' }}>

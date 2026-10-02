@@ -41,15 +41,53 @@ function PageLoader() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, user } = useAuthStore();
 
   if (isLoading) {
     return <PageLoader />;
   }
 
-  // Allow guest access in offline/development mode if no active remote user yet
-  if (!isAuthenticated && !localStorage.getItem('supabase.auth.token')) {
-    return <>{children}</>;
+  // Strict Zero-Trust Gate: No unauthenticated guest access. Must log in or create an account.
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Block suspended users
+  if (user.status === 'suspended') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', padding: 'var(--space-6)', textAlign: 'center' }}>
+        <div style={{ fontSize: '3rem', marginBottom: 'var(--space-4)' }}>🚫</div>
+        <h2 style={{ color: 'var(--color-error)', marginBottom: 'var(--space-2)' }}>Account Suspended</h2>
+        <p style={{ maxWidth: '480px', color: 'var(--color-ink-muted)', marginBottom: 'var(--space-6)' }}>
+          Your account has been suspended by an administrator. You do not currently have access to AxonPass modules.
+        </p>
+        <button
+          onClick={() => useAuthStore.getState().signOut()}
+          className="btn btn-secondary btn-sm"
+        >
+          Sign Out
+        </button>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, isLoading } = useAuthStore();
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const isAdmin = user.role === 'owner' || user.role === 'admin';
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -90,7 +128,14 @@ export default function App() {
             <Route path="/quiz" element={<QuizPage />} />
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/insights" element={<InsightsPage />} />
-            <Route path="/admin" element={<AdminPage />} />
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <AdminPage />
+                </AdminRoute>
+              }
+            />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
 

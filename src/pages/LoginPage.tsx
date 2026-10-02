@@ -86,11 +86,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleGuestBypass = () => {
-    // Navigate straight to dashboard in offline-first mode
-    navigate('/');
-  };
-
   return (
     <div className="login-page">
       <div className="login-container">
@@ -325,17 +320,20 @@ export default function LoginPage() {
               )}
             </div>
 
-            <div className="login-divider">or</div>
-
-            {/* Offline Guest Access */}
-            <button
-              type="button"
-              className="btn btn-secondary w-full"
-              onClick={handleGuestBypass}
-              title="Continue offline without cloud account"
+            <div
+              style={{
+                marginTop: 'var(--space-6)',
+                padding: 'var(--space-3)',
+                backgroundColor: 'var(--color-surface-subtle)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--color-ink-muted)',
+                textAlign: 'center',
+                border: '1px solid var(--border-color)',
+              }}
             >
-              Continue in Offline Guest Mode
-            </button>
+              🔒 <strong>Strictly Gated Access:</strong> You must sign in or create an account to access the question banks, diagnostic tools, and study materials.
+            </div>
           </form>
         </div>
       </div>

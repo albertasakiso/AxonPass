@@ -4,16 +4,21 @@
 
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS } from '../../types';
+import { useAuthStore } from '../../stores/authStore';
 
 export default function SideRail() {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
+  const visibleNavItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || isAdmin);
+
   return (
     <aside className="side-rail desktop-only" role="navigation" aria-label="Main navigation">
       <div className="side-rail-logo">
-        <span aria-hidden="true">📘</span> Learning Pass
+        <span aria-hidden="true">📘</span> AxonPass
       </div>
 
       <nav className="side-rail-nav">
-        {NAV_ITEMS.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink
             key={item.id}
             to={item.path}

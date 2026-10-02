@@ -11,7 +11,8 @@ import { supabase } from '../lib/supabase';
 import { isDueForReview, isExamReady } from '../lib/leitner';
 import { estimateIrtScaledScore } from '../lib/ml/bktEngine';
 import type { IrtAbilityEstimate } from '../lib/ml/types';
-import type { QuizSession, Question, Domain, Topic } from '../types';
+import type { QuizSession, Question, Domain, Topic, UserProgress } from '../types';
+import { useAuthStore } from './authStore';
 
 export interface DomainProgressSummary {
   domainId: string;
@@ -72,7 +73,7 @@ interface ProgressState {
   weeklyStudyMinutes: { day: string; date: string; minutes: number }[];
   isLoading: boolean;
 
-  refreshProgress: (certificationSlugOrId?: string) => Promise<void>;
+  refreshProgress: (certificationSlugOrId?: string, explicitUserId?: string) => Promise<void>;
 }
 
 export const useProgressStore = create<ProgressState>((set, get) => ({
@@ -95,7 +96,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
   weeklyStudyMinutes: [],
   isLoading: false,
 
-  refreshProgress: async (certificationSlugOrId?: string) => {
+  refreshProgress: async (certificationSlugOrId?: string, explicitUserId?: string) => {
     set({ isLoading: true });
     try {
       // 1. Resolve Target Certification
@@ -175,12 +176,54 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
         }
       });
 
-      // 5. Load Real User Progress & Sessions for this Certification
-      const allProgress = await db.userProgress.toArray();
+      // 5. Load Real User Progress & Sessions for this Certification (strictly scoped to user)
+      const currentUserId = explicitUserId || useAuthStore.getState().user?.id;
+      let allProgress: UserProgress[] = [];
+      let allSessions: QuizSession[] = [];
+
+      if (currentUserId) {
+        allProgress = await db.userProgress.where('user_id').equals(currentUserId).toArray();
+        allSessions = await db.quizSessions.where('user_id').equals(currentUserId).reverse().sortBy('started_at');
+
+        // Cloud hydration if local IndexedDB doesn't have records yet
+        if (navigator.onLine) {
+          if (allProgress.length === 0) {
+            try {
+              const { data: remoteProg } = await supabase
+                .from('user_progress')
+                .select('*')
+                .eq('user_id', currentUserId);
+              if (remoteProg && remoteProg.length > 0) {
+                await db.userProgress.bulkPut(remoteProg as any);
+                allProgress = remoteProg as any;
+              }
+            } catch {
+              // Ignore offline fallback
+            }
+          }
+          if (allSessions.length === 0) {
+            try {
+              const { data: remoteSess } = await supabase
+                .from('quiz_sessions')
+                .select('*')
+                .eq('user_id', currentUserId)
+                .order('started_at', { ascending: false });
+              if (remoteSess && remoteSess.length > 0) {
+                await db.quizSessions.bulkPut(remoteSess as any);
+                allSessions = remoteSess as any;
+              }
+            } catch {
+              // Ignore offline fallback
+            }
+          }
+        }
+      } else {
+        allProgress = await db.userProgress.toArray();
+        allSessions = await db.quizSessions.orderBy('started_at').reverse().toArray();
+      }
+
       // Filter progress items matching this certification's domains
       const progressItems = allProgress.filter((p) => domainIds.includes(p.domain_id));
-
-      const allSessions = await db.quizSessions.orderBy('started_at').reverse().toArray();
       const certSessions = allSessions.filter((s) => s.certification_id === targetCertId);
 
       let totalSeen = 0;

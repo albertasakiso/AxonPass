@@ -5,14 +5,18 @@
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS } from '../../types';
 import { useProgressStore } from '../../stores/progressStore';
+import { useAuthStore } from '../../stores/authStore';
 import { triggerHaptic } from '../../lib/haptics';
 
 export default function BottomNav() {
   const { reviewDueCount } = useProgressStore();
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
+  const visibleNavItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || isAdmin);
 
   return (
     <nav className="bottom-nav mobile-only" role="navigation" aria-label="Main navigation">
-      {NAV_ITEMS.map((item) => {
+      {visibleNavItems.map((item) => {
         const showBadge = item.id === 'practice' && reviewDueCount > 0;
 
         return (

@@ -15,6 +15,7 @@ import FreeTierStorageMonitor from '../components/admin/FreeTierStorageMonitor';
 export default function SettingsPage() {
   const { user, signOut, activeCertificationSlug, setActiveCertification } = useAuthStore();
   const { refreshProgress } = useProgressStore();
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
 
   const [certifications, setCertifications] = useState<Certification[]>([]);
   const [themeMode, setThemeMode] = useState<string>(() => {
@@ -112,12 +113,17 @@ export default function SettingsPage() {
 
   const handleResetProgress = async () => {
     try {
-      await db.userProgress.clear();
-      await db.quizSessions.clear();
-      await db.sessionAnswers.clear();
+      if (user?.id) {
+        await db.userProgress.where('user_id').equals(user.id).delete();
+        await db.quizSessions.where('user_id').equals(user.id).delete();
+      } else {
+        await db.userProgress.clear();
+        await db.quizSessions.clear();
+        await db.sessionAnswers.clear();
+      }
       await refreshProgress();
       setShowResetConfirm(false);
-      setExportNotice('✓ All local progress and quiz history has been reset.');
+      setExportNotice('✓ Your personal learning progress and quiz history has been reset.');
       setTimeout(() => setExportNotice(null), 5000);
     } catch (err: any) {
       setExportNotice(`Reset failed: ${err.message}`);
@@ -188,11 +194,30 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Scalable AI Compute Cluster & Multi-Machine Configuration */}
-      <AiClusterConfigPanel />
-
-      {/* Supabase Free-Tier Storage & Resource Quota Auto-Cleanser */}
-      <FreeTierStorageMonitor />
+      {/* Scalable AI Compute Cluster & Multi-Machine Configuration (Admins & Owners Only) */}
+      {isAdmin && (
+        <div className="settings-admin-boundary mb-8">
+          <div className="mb-3" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                backgroundColor: 'rgba(234, 179, 8, 0.15)',
+                border: '1px solid rgba(234, 179, 8, 0.4)',
+                color: '#ca8a04',
+                padding: '2px 8px',
+                borderRadius: '6px',
+              }}
+            >
+              🛡️ Infrastructure &amp; System Configuration (Admin Only)
+            </span>
+          </div>
+          <AiClusterConfigPanel />
+          <FreeTierStorageMonitor />
+        </div>
+      )}
 
       {/* Appearance & Themes */}
       <div className="settings-section">
