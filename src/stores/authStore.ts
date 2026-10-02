@@ -6,6 +6,7 @@
 
 import { create } from 'zustand';
 import { supabase } from '../lib/supabase';
+import { useProgressStore } from './progressStore';
 import type { UserProfile } from '../types';
 
 interface AuthState {
@@ -39,6 +40,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   setActiveCertification: (slug: string) => {
     localStorage.setItem('alp_active_cert', slug);
     set({ activeCertificationSlug: slug });
+    try {
+      useProgressStore.getState().refreshProgress(slug);
+    } catch (e) {
+      console.warn('Could not auto-refresh progressStore on cert change:', e);
+    }
   },
 
   initialize: async () => {

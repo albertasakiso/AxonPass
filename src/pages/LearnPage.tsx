@@ -17,14 +17,17 @@ export default function LearnPage() {
   const navigate = useNavigate();
   const { startQuiz } = useQuizStore();
 
-  const { activeCertificationSlug } = useAuthStore();
+  const { activeCertificationSlug, setActiveCertification } = useAuthStore();
+  const effectiveCertSlug = activeCertificationSlug || 'cisa';
+
   const [viewMode, setViewMode] = useState<'syllabus' | 'documents' | 'graph' | 'delta' | 'calculators'>('syllabus');
   const [certifications, setCertifications] = useState<Certification[]>([]);
-  const [selectedCertSlug, setSelectedCertSlug] = useState<string>(activeCertificationSlug || 'cisa');
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
+  const [allCertTopics, setAllCertTopics] = useState<Topic[]>([]);
+  const [allCertSubtopics, setAllCertSubtopics] = useState<Subtopic[]>([]);
   const [glossaryTerms, setGlossaryTerms] = useState<GlossaryTerm[]>([]);
   const [studyMaterials, setStudyMaterials] = useState<StudyMaterial[]>([]);
   const [vaultDocuments, setVaultDocuments] = useState<DocumentIngestionRecord[]>([]);
@@ -36,13 +39,6 @@ export default function LearnPage() {
   const [isGlossaryOpen, setIsGlossaryOpen] = useState(false);
   const [isTasksOpen, setIsTasksOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // Sync with global auth store certification
-  useEffect(() => {
-    if (activeCertificationSlug && activeCertificationSlug !== selectedCertSlug) {
-      setSelectedCertSlug(activeCertificationSlug);
-    }
-  }, [activeCertificationSlug, selectedCertSlug]);
 
   // 1. Load Certifications
   useEffect(() => {
@@ -59,7 +55,7 @@ export default function LearnPage() {
   useEffect(() => {
     async function loadCertData() {
       setLoading(true);
-      const currentCert = certifications.find(c => c.slug === selectedCertSlug);
+      const currentCert = certifications.find(c => c.slug === effectiveCertSlug);
       if (!currentCert) {
         setLoading(false);
         return;
@@ -75,9 +71,32 @@ export default function LearnPage() {
       if (domData && domData.length > 0) {
         setDomains(domData);
         setSelectedDomainId(domData[0].id);
+
+        // Load all topics and subtopics for this cert (for comprehensive review manual reading)
+        const domainIds = domData.map(d => d.id);
+        const { data: allTData } = await supabase
+          .from('topics')
+          .select('*')
+          .in('domain_id', domainIds)
+          .order('sort_order');
+        setAllCertTopics(allTData || []);
+
+        if (allTData && allTData.length > 0) {
+          const topicIds = allTData.map(t => t.id);
+          const { data: allSData } = await supabase
+            .from('subtopics')
+            .select('*')
+            .in('topic_id', topicIds)
+            .order('sort_order');
+          setAllCertSubtopics(allSData || []);
+        } else {
+          setAllCertSubtopics([]);
+        }
       } else {
         setDomains([]);
         setSelectedDomainId(null);
+        setAllCertTopics([]);
+        setAllCertSubtopics([]);
       }
 
       // Glossary
@@ -112,11 +131,10 @@ export default function LearnPage() {
         setSelectedMaterialId(null);
       }
 
-      // Ingested Storage Vault Documents for this Certification (Zero bleed guarantee)
+      // Ingested Storage Vault Documents (Load all documents so learner can filter or view active cert)
       const { data: vaultData } = await supabase
         .from('document_ingestion_ledger')
         .select('*')
-        .eq('certification_slug', selectedCertSlug)
         .order('file_name');
 
       if (vaultData) {
@@ -131,7 +149,7 @@ export default function LearnPage() {
     if (certifications.length > 0) {
       loadCertData();
     }
-  }, [certifications, selectedCertSlug]);
+  }, [certifications, effectiveCertSlug]);
 
   // 3. Load Topics & Subtopics for Selected Domain
   useEffect(() => {
@@ -168,7 +186,7 @@ export default function LearnPage() {
     loadDomainContent();
   }, [selectedDomainId]);
 
-  const currentCert = certifications.find(c => c.slug === selectedCertSlug);
+  const currentCert = certifications.find(c => c.slug === effectiveCertSlug);
   const currentDomain = domains.find(d => d.id === selectedDomainId);
 
   const {
@@ -292,24 +310,43 @@ export default function LearnPage() {
 
   return (
     <div style={{ paddingBottom: 'var(--space-12)' }}>
-      
+      {/* Certification Track Switcher */}
+      <div className="cert-tabs-bar mb-4" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px', scrollbarWidth: 'none' }}>
+        {certifications.map(c => (
+          <button
+            key={c.id}
+            onClick={() => setActiveCertification(c.slug)}
+            className={`cert-tab-btn ${effectiveCertSlug === c.slug ? 'active' : ''}`}
+            style={{
+              padding: '6px 14px',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              borderRadius: 'var(--radius-full)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            🎯 {c.code || c.name.split('—')[0].trim()}
+          </button>
+        ))}
+      </div>
+
       {/* Header Banner */}
       <div className="learn-header-banner">
         <div>
           <div className="learn-header-badge">
-            <span>📚</span> {currentCert?.code || 'CISA'} Official Curriculum &amp; Library
+            <span>📚</span> {currentCert?.code || 'Certification'} Official Curriculum &amp; Library
           </div>
           <h1 className="learn-header-title">
-            {currentCert?.name || 'CISA — Certified Information Systems Auditor'}
+            {currentCert?.name || 'Certification Curriculum'}
           </h1>
           <p className="learn-header-desc">
-            Official 28th Edition curriculum organized across 5 core domains, 60 canonical topics, and 145+ granular submodules with authoritative ISACA Review Manual text.
+            {currentCert?.description || `Curriculum organized across ${domains.length} domains, ${allCertTopics.length} topics, and ${allCertSubtopics.length} granular lessons with authoritative Review Manual text.`}
           </p>
         </div>
 
         {/* Action Buttons */}
         <div className="learn-actions">
-          {selectedCertSlug === 'cisa' && (
+          {effectiveCertSlug === 'cisa' && (
             <button
               onClick={() => setIsTasksOpen(true)}
               className="btn btn-secondary"
@@ -371,7 +408,7 @@ export default function LearnPage() {
             <span>🧠</span> Knowledge Graph
           </button>
 
-          {selectedCertSlug === 'cisa' && (
+          {effectiveCertSlug === 'cisa' && (
             <button
               onClick={() => setViewMode('delta')}
               className={`segmented-pill ${viewMode === 'delta' ? 'active' : ''}`}
@@ -393,7 +430,7 @@ export default function LearnPage() {
         </div>
 
         {/* CISA 28th Edition Badge */}
-        {selectedCertSlug === 'cisa' && (
+        {effectiveCertSlug === 'cisa' && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <span className="badge badge-primary font-bold desktop-only" style={{ fontSize: '11px' }}>
               ISACA 28th Edition (2024 Blueprint)
@@ -420,6 +457,10 @@ export default function LearnPage() {
         <DocumentReader
           materials={studyMaterials}
           vaultDocuments={vaultDocuments}
+          allTopics={allCertTopics}
+          allSubtopics={allCertSubtopics}
+          domains={domains}
+          activeCertificationSlug={effectiveCertSlug}
           activeMaterialId={selectedMaterialId}
           onSelectMaterial={(m) => setSelectedMaterialId(m.id)}
           onPracticeChapter={(domId) => handleStartDomainQuiz(domId)}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuizStore } from '../stores/quizStore';
+import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
 import { calculateTimeLimit } from '../lib/timer';
 import { db } from '../lib/db';
@@ -9,9 +10,17 @@ import type { Certification, Domain, Topic, Question } from '../types';
 export default function PracticePage() {
   const navigate = useNavigate();
   const { startQuiz } = useQuizStore();
+  const { activeCertificationSlug, setActiveCertification } = useAuthStore();
 
   const [certifications, setCertifications] = useState<Certification[]>([]);
-  const [selectedCertSlug, setSelectedCertSlug] = useState<string>('cisa');
+  const [selectedCertSlug, setSelectedCertSlug] = useState<string>(activeCertificationSlug || 'cisa');
+
+  // Keep in sync with global auth store
+  useEffect(() => {
+    if (activeCertificationSlug && activeCertificationSlug !== selectedCertSlug) {
+      setSelectedCertSlug(activeCertificationSlug);
+    }
+  }, [activeCertificationSlug, selectedCertSlug]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<string>('all');
@@ -260,7 +269,7 @@ export default function PracticePage() {
             {currentCert?.name || 'Practice & Exam Simulator'}
           </h1>
           <p className="learn-header-desc">
-            Access over <strong style={{ color: '#fff', fontFamily: 'var(--font-mono)' }}>{totalQuestionsInBank.toLocaleString()}</strong> verified CISA questions with full rationales, compressed exam pacing, and 5-Box Leitner spaced-repetition.
+            Access over <strong style={{ color: '#fff', fontFamily: 'var(--font-mono)' }}>{totalQuestionsInBank.toLocaleString()}</strong> verified {currentCert?.code || 'curriculum'} questions with full rationales, compressed exam pacing, and 5-Box Leitner spaced-repetition.
           </p>
         </div>
 
@@ -269,7 +278,10 @@ export default function PracticePage() {
           {certifications.map(c => (
             <button
               key={c.id}
-              onClick={() => setSelectedCertSlug(c.slug)}
+              onClick={() => {
+                setSelectedCertSlug(c.slug);
+                setActiveCertification(c.slug);
+              }}
               className={`cert-tab-btn ${selectedCertSlug === c.slug ? 'active' : ''}`}
             >
               🎯 {c.code || c.slug.toUpperCase()}

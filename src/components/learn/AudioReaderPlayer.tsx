@@ -16,6 +16,7 @@ interface AudioReaderPlayerProps {
   onSentenceHighlight?: (sentence: string, index: number) => void;
   onNextChapter?: () => void;
   onPrevChapter?: () => void;
+  onClose?: () => void;
 }
 
 export default function AudioReaderPlayer({
@@ -24,6 +25,7 @@ export default function AudioReaderPlayer({
   onSentenceHighlight,
   onNextChapter,
   onPrevChapter,
+  onClose,
 }: AudioReaderPlayerProps) {
   const [state, setState] = useState<SpeechPlaybackState>(speechEngine.getState());
   const [voices, setVoices] = useState<SpeechVoiceOption[]>([]);
@@ -74,6 +76,15 @@ export default function AudioReaderPlayer({
     speechEngine.stop();
   };
 
+  const handleClose = () => {
+    speechEngine.stop();
+    if (onClose) {
+      onClose();
+    } else {
+      setIsMinimized(true);
+    }
+  };
+
   const handleSpeedChange = (rate: number) => {
     speechEngine.setRate(rate);
   };
@@ -96,36 +107,64 @@ export default function AudioReaderPlayer({
           bottom: '24px',
           right: '24px',
           zIndex: 999,
-          padding: '8px 16px',
+          padding: '6px 14px',
           backgroundColor: 'var(--color-bg)',
           border: '2px solid var(--color-primary)',
           borderRadius: 'var(--radius-full)',
           display: 'flex',
           alignItems: 'center',
-          gap: '12px',
-          boxShadow: '0 8px 30px rgba(0,0,0,0.18)',
+          gap: '10px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+          backdropFilter: 'blur(8px)',
         }}
       >
         <button
           type="button"
           className="btn btn-xs btn-primary"
           onClick={handleTogglePlay}
-          style={{ width: '32px', height: '32px', borderRadius: '50%', padding: 0 }}
+          style={{ width: '30px', height: '30px', borderRadius: '50%', padding: 0 }}
+          title={state.isPlaying && !state.isPaused ? 'Pause' : 'Play'}
         >
           {state.isPlaying && !state.isPaused ? '⏸' : '▶'}
         </button>
 
-        <div style={{ fontSize: '11px', fontWeight: 'bold' }}>
-          🎧 {state.isPlaying ? 'Speaking...' : 'Audio Paused'} ({percent}%)
+        <div
+          onClick={() => setIsMinimized(false)}
+          style={{ fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+          title="Click to expand player"
+        >
+          <span>🎧</span>
+          <span>{percent}%</span>
         </div>
 
         <button
           type="button"
           className="btn btn-xs btn-ghost"
-          onClick={() => setIsMinimized(false)}
-          title="Expand Player"
+          onClick={() => speechEngine.skipNext()}
+          title="Next sentence"
+          style={{ padding: '2px 4px' }}
         >
-          ▲
+          ⏩
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-xs btn-secondary"
+          onClick={() => setIsMinimized(false)}
+          title="Expand Full Controls"
+          style={{ fontSize: '10px', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}
+        >
+          ⤢ Expand
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-xs btn-ghost"
+          onClick={handleClose}
+          title="Close Audio Player"
+          style={{ padding: '2px 4px', fontSize: '12px' }}
+        >
+          ✕
         </button>
       </div>
     );
@@ -135,16 +174,13 @@ export default function AudioReaderPlayer({
     <div
       className="card shadow-lg animate-slide-up"
       style={{
-        position: 'sticky',
-        top: '64px',
-        zIndex: 40,
         margin: '0 0 var(--space-4) 0',
         padding: 'var(--space-3) var(--space-4)',
         backgroundColor: 'var(--color-bg)',
         border: '1px solid var(--color-primary-200)',
         borderLeft: '4px solid var(--color-primary)',
         borderRadius: 'var(--radius-lg)',
-        boxShadow: '0 4px 20px rgba(0, 35, 102, 0.08)',
+        boxShadow: '0 4px 16px rgba(0, 35, 102, 0.08)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
@@ -205,11 +241,23 @@ export default function AudioReaderPlayer({
 
           <button
             type="button"
-            className="btn btn-xs btn-ghost"
+            className="btn btn-xs btn-secondary"
             onClick={() => setIsMinimized(true)}
-            title="Minimize to Floating Bar"
+            title="Minimize to Floating Corner Pill"
+            style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
           >
-            ▼
+            <span>—</span>
+            <span>Mini</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-xs btn-ghost"
+            onClick={handleClose}
+            title="Stop & Close Player"
+            style={{ fontSize: '12px', padding: '2px 6px' }}
+          >
+            ✕
           </button>
         </div>
       </div>
