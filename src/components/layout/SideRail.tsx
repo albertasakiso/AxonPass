@@ -5,6 +5,7 @@
 import { NavLink } from 'react-router-dom';
 import { NAV_ITEMS } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
+import { AxonPassLogo } from '../common/AxonPassLogo';
 
 export default function SideRail() {
   const { user } = useAuthStore();
@@ -13,8 +14,10 @@ export default function SideRail() {
 
   return (
     <aside className="side-rail desktop-only" role="navigation" aria-label="Main navigation">
-      <div className="side-rail-logo">
-        <span aria-hidden="true">📘</span> AxonPass
+      <div className="side-rail-logo" style={{ padding: 'var(--space-4) var(--space-4)' }}>
+        <NavLink to="/" style={{ textDecoration: 'none' }}>
+          <AxonPassLogo size={32} showText={true} />
+        </NavLink>
       </div>
 
       <nav className="side-rail-nav">

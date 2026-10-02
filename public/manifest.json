@@ -1,18 +1,36 @@
 {
-  "name": "Learning Pass",
-  "short_name": "LearningPass",
-  "description": "Private certification mastery platform",
+  "name": "AxonPass — Neural Certification Mastery",
+  "short_name": "AxonPass",
+  "description": "Enterprise AI-powered certification mastery platform with 0ms offline edge intelligence and adaptive psychometrics",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FFFFFF",
-  "theme_color": "#002366",
+  "background_color": "#0B0F19",
+  "theme_color": "#0B0F19",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/vite.svg",
+      "src": "/favicon.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ],
-  "categories": ["education"]
+  "categories": ["education", "productivity", "utilities"]
 }

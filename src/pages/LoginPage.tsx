@@ -7,6 +7,7 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { AxonPassLogo } from '../components/common/AxonPassLogo';
 
 type AuthMode = 'sign_in' | 'sign_up' | 'magic_link' | 'forgot_password';
 
@@ -90,12 +91,30 @@ export default function LoginPage() {
     <div className="login-page">
       <div className="login-container">
         {/* Brand Banner */}
-        <div className="login-brand">
-          <div className="login-brand-logo" aria-hidden="true">
-            LP
+        <div className="login-brand" style={{ textAlign: 'center', marginBottom: 'var(--space-6)' }}>
+          <div style={{ display: 'inline-flex', marginBottom: 'var(--space-2)' }}>
+            <AxonPassLogo size={64} />
           </div>
-          <h1>Learning Pass</h1>
-          <p>Private certification mastery platform</p>
+          <h1 style={{
+            fontSize: 'var(--text-3xl)',
+            fontWeight: 800,
+            letterSpacing: '-0.03em',
+            margin: '0 0 var(--space-1) 0',
+            background: 'linear-gradient(135deg, #FFFFFF 30%, #38BDF8 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+          }}>
+            AxonPass
+          </h1>
+          <p style={{
+            color: 'var(--color-ink-muted)',
+            fontSize: 'var(--text-sm)',
+            maxWidth: '380px',
+            margin: '0 auto',
+            lineHeight: 1.5,
+          }}>
+            Neural Certification Mastery &amp; Edge Psychometrics Platform
+          </p>
         </div>
 
         {/* Auth Card */}

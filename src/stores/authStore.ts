@@ -287,7 +287,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isAuthenticated: true,
           isLoading: false,
           error: null,
-          successMessage: 'Account created successfully! Welcome to Learning Pass.',
+          successMessage: 'Account created successfully! Welcome to AxonPass.',
         });
 
         return {

@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useProgressStore } from '../../stores/progressStore';
 import { syncUserProgressToCloud } from '../../lib/syncUserProgress';
 import { supabase } from '../../lib/supabase';
+import { AxonPassLogo } from '../common/AxonPassLogo';
 import type { Certification } from '../../types';
 
 interface AuthModalProps {
@@ -206,8 +207,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             ✕
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '1.6rem' }}>🎓</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+            <AxonPassLogo size={36} />
             <div>
               <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', opacity: 0.85, fontWeight: 'bold' }}>
                 AxonPass Learning Platform

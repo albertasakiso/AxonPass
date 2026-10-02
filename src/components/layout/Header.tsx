@@ -11,13 +11,14 @@ import { useProgressStore } from '../../stores/progressStore';
 import { supabase } from '../../lib/supabase';
 import { AuthModal } from '../auth/AuthModal';
 import { UserProfileModal } from '../profile/UserProfileModal';
+import { AxonPassLogo } from '../common/AxonPassLogo';
 import type { Certification } from '../../types';
 
 interface HeaderProps {
   title?: string;
 }
 
-export default function Header({ title = 'Learning Pass' }: HeaderProps) {
+export default function Header({ title = 'AxonPass' }: HeaderProps) {
   const navigate = useNavigate();
   const { status, isOnline, pendingCount } = useSyncStore();
   const { user, isAuthenticated, activeCertificationSlug, setActiveCertification } = useAuthStore();
@@ -58,15 +59,15 @@ export default function Header({ title = 'Learning Pass' }: HeaderProps) {
               padding: '4px 6px',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '8px',
               borderRadius: 'var(--radius-md)',
               fontWeight: 'bold',
               color: 'var(--color-primary)',
             }}
             title="Go to Home"
           >
-            <span style={{ fontSize: '1.2rem' }}>📘</span>
-            <span className="app-header-title mobile-only">{title}</span>
+            <AxonPassLogo size={24} />
+            <span className="app-header-title mobile-only" style={{ fontWeight: 800, letterSpacing: '-0.02em' }}>{title}</span>
           </button>
 
           {certifications.length > 0 && (
