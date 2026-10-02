@@ -25,6 +25,8 @@ interface QuizState {
   sessionType: SessionType;
   certificationId: string;
   domainId: string | null;
+  topicId: string | null;
+  sectionTitle: string | null;
   questions: Question[];
   currentIndex: number;
 
@@ -56,7 +58,9 @@ interface QuizState {
     timeLimitSeconds: number,
     certificationId: string,
     domainId?: string | null,
-    feedbackPolicy?: 'immediate' | 'delayed'
+    feedbackPolicy?: 'immediate' | 'delayed',
+    topicId?: string | null,
+    sectionTitle?: string | null
   ) => Promise<void>;
   selectOption: (option: 'A' | 'B' | 'C' | 'D') => void;
   submitAnswer: (userId?: string) => Promise<void>;
@@ -76,6 +80,8 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   sessionType: 'practice',
   certificationId: 'a0000000-0000-0000-0000-000000000001',
   domainId: null,
+  topicId: null,
+  sectionTitle: null,
   questions: [],
   currentIndex: 0,
   answers: {},
@@ -98,7 +104,9 @@ export const useQuizStore = create<QuizState>((set, get) => ({
     timeLimitSeconds,
     certificationId,
     domainId = null,
-    feedbackPolicy = 'immediate'
+    feedbackPolicy = 'immediate',
+    topicId = null,
+    sectionTitle = null
   ) => {
     const sessionId = uuidv4();
     const initialAnswers: Record<string, SessionAnswer> = {};
@@ -123,6 +131,8 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       sessionType,
       certificationId,
       domainId,
+      topicId,
+      sectionTitle,
       questions,
       currentIndex: 0,
       answers: initialAnswers,
@@ -147,7 +157,7 @@ export const useQuizStore = create<QuizState>((set, get) => ({
       user_id: currentUserId,
       certification_id: certificationId,
       domain_id: domainId,
-      topic_id: null,
+      topic_id: topicId,
       session_type: sessionType,
       total_questions: questions.length,
       time_limit_seconds: timeLimitSeconds,
@@ -467,6 +477,8 @@ export const useQuizStore = create<QuizState>((set, get) => ({
   resetQuiz: () => {
     set({
       sessionId: null,
+      topicId: null,
+      sectionTitle: null,
       questions: [],
       currentIndex: 0,
       answers: {},

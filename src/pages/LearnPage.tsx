@@ -11,7 +11,7 @@ import { InteractiveCalculators } from '../components/learn/InteractiveCalculato
 import { CisaVersionDeltaViewer } from '../components/learn/CisaVersionDeltaViewer';
 import { TaskStatementsDrawer } from '../components/learn/TaskStatementsDrawer';
 import { ConceptGraphExplorer } from '../components/learn/ConceptGraphExplorer';
-import type { Certification, Domain, Topic, Subtopic, GlossaryTerm, StudyMaterial, TaskStatement, DocumentIngestionRecord } from '../types';
+import type { Certification, Domain, Topic, Subtopic, Question, GlossaryTerm, StudyMaterial, TaskStatement, DocumentIngestionRecord } from '../types';
 
 export default function LearnPage() {
   const navigate = useNavigate();
@@ -247,42 +247,163 @@ export default function LearnPage() {
 
   const handleStartDomainQuiz = async (domainId: string) => {
     if (!currentCert) return;
-    const { data: qData } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('certification_id', currentCert.id)
-      .eq('domain_id', domainId)
-      .eq('is_active', true)
-      .limit(20);
+    setLoading(true);
+    try {
+      const targetDomain = domains.find((d) => d.id === domainId);
+      const { data: qData } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('certification_id', currentCert.id)
+        .eq('domain_id', domainId)
+        .eq('is_active', true);
 
-    if (qData && qData.length > 0) {
-      await startQuiz(qData, 'domain_drill', 1200, currentCert.id, domainId, 'immediate');
+      if (!qData || qData.length === 0) {
+        alert('No questions found specifically for this domain.');
+        setLoading(false);
+        return;
+      }
+
+      const shuffled = [...qData].sort(() => Math.random() - 0.5).slice(0, 15);
+      const title = targetDomain ? `Domain ${targetDomain.domain_number}: ${targetDomain.name}` : 'Domain Drill';
+
+      await startQuiz(
+        shuffled,
+        'domain_drill',
+        1200,
+        currentCert.id,
+        domainId,
+        'immediate',
+        null,
+        title
+      );
+      setLoading(false);
       navigate('/quiz');
+    } catch (err: any) {
+      console.error('Failed to launch domain quiz:', err);
+      setLoading(false);
     }
   };
 
-  const handleStartTopicQuiz = async (topicId: string) => {
+  const handleStartSectionQuiz = async (subtopic: Subtopic, topic?: Topic | null) => {
     if (!currentCert) return;
-    const { data: qData } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('certification_id', currentCert.id)
-      .eq('topic_id', topicId)
-      .eq('is_active', true)
-      .limit(10);
+    setLoading(true);
+    try {
+      // 1. Query questions specifically tagged to this exact subtopic / section
+      let pool: Question[] = [];
+      const { data: subQuestions } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('certification_id', currentCert.id)
+        .eq('subtopic_id', subtopic.id)
+        .eq('is_active', true);
 
-    const questions = (qData && qData.length > 0) ? qData : (
-      (await supabase.from('questions').select('*').eq('certification_id', currentCert.id).limit(10)).data || []
-    );
+      if (subQuestions && subQuestions.length > 0) {
+        pool = [...subQuestions];
+      }
 
-    if (questions.length > 0) {
-      await startQuiz(questions, 'topic_drill', 600, currentCert.id, selectedDomainId, 'immediate');
+      // 2. If subtopic pool has fewer than 10 questions, pull questions from parent topic
+      const parentTopicId = subtopic.topic_id || topic?.id;
+      if (pool.length < 10 && parentTopicId) {
+        const { data: topicQuestions } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('certification_id', currentCert.id)
+          .eq('topic_id', parentTopicId)
+          .eq('is_active', true);
+
+        if (topicQuestions && topicQuestions.length > 0) {
+          const existingIds = new Set(pool.map((q) => q.id));
+          const additions = topicQuestions.filter((q) => !existingIds.has(q.id));
+          pool = [...pool, ...additions];
+        }
+      }
+
+      // 3. Fallback to subtopic_code in source_reference within this certification
+      if (pool.length === 0) {
+        const cleanCode = subtopic.subtopic_code.trim();
+        const { data: taggedQ } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('certification_id', currentCert.id)
+          .or(`source_reference.ilike.%${cleanCode}%,stem.ilike.%${cleanCode}%`)
+          .eq('is_active', true);
+
+        if (taggedQ && taggedQ.length > 0) {
+          pool = taggedQ;
+        }
+      }
+
+      if (pool.length === 0) {
+        alert(`No questions found specifically for Section ${subtopic.subtopic_code} (${subtopic.name}). Please practice the parent domain or another section.`);
+        setLoading(false);
+        return;
+      }
+
+      // Shuffle section questions and take up to 10
+      const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, 10);
+      const sectionTitle = `Section ${subtopic.subtopic_code}: ${subtopic.name}`;
+
+      await startQuiz(
+        shuffled,
+        'topic_drill',
+        600,
+        currentCert.id,
+        currentDomain?.id || null,
+        'immediate',
+        parentTopicId || null,
+        sectionTitle
+      );
+      setLoading(false);
       navigate('/quiz');
+    } catch (err: any) {
+      console.error('Failed to launch section quiz:', err);
+      alert('Error loading section questions: ' + err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleStartTopicQuiz = async (topicId: string, topicName?: string, topicCode?: string) => {
+    if (!currentCert) return;
+    setLoading(true);
+    try {
+      const { data: qData } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('certification_id', currentCert.id)
+        .eq('topic_id', topicId)
+        .eq('is_active', true);
+
+      if (!qData || qData.length === 0) {
+        alert('No questions found specifically for this topic.');
+        setLoading(false);
+        return;
+      }
+
+      // Shuffle and pick up to 10
+      const shuffled = [...qData].sort(() => Math.random() - 0.5).slice(0, 10);
+      const title = topicCode && topicName ? `Topic ${topicCode}: ${topicName}` : topicCode || 'Topic Practice';
+
+      await startQuiz(
+        shuffled,
+        'topic_drill',
+        600,
+        currentCert.id,
+        selectedDomainId,
+        'immediate',
+        topicId,
+        title
+      );
+      setLoading(false);
+      navigate('/quiz');
+    } catch (err: any) {
+      console.error('Failed to launch topic quiz:', err);
+      setLoading(false);
     }
   };
 
   const handleStartDeltaQuiz = async () => {
     if (!currentCert) return;
+    setLoading(true);
     const { data: qData } = await supabase
       .from('questions')
       .select('*')
@@ -291,31 +412,48 @@ export default function LearnPage() {
       .limit(20);
 
     if (qData && qData.length > 0) {
-      await startQuiz(qData, 'quick_check', 1200, currentCert.id, null, 'immediate');
+      const shuffled = [...qData].sort(() => Math.random() - 0.5);
+      await startQuiz(shuffled, 'quick_check', 1200, currentCert.id, null, 'immediate', null, 'CISA Delta Diagnostic');
+      setLoading(false);
       navigate('/quiz');
+    } else {
+      setLoading(false);
     }
   };
 
   const handleStartTopicCodeQuiz = async (topicCode: string) => {
     if (!currentCert) return;
-    // Find matching questions by topic or domain
-    const { data: qData } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('certification_id', currentCert.id)
-      .or(`stem.ilike.%${topicCode}%,source_reference.ilike.%${topicCode}%`)
-      .eq('is_active', true)
-      .limit(10);
-
-    if (qData && qData.length > 0) {
-      await startQuiz(qData, 'practice', 600, currentCert.id, null, 'immediate');
-      navigate('/quiz');
-    } else {
-      const domainNum = parseInt(topicCode[0]) || 1;
-      const targetDomain = domains.find(d => d.domain_number === domainNum);
-      if (targetDomain) {
-        handleStartDomainQuiz(targetDomain.id);
+    setLoading(true);
+    try {
+      // Find matching topic in allCertTopics
+      const matchingTopic = allCertTopics.find(
+        (t) => t.topic_code === topicCode || t.topic_code.replace(/[^0-9]/g, '') === topicCode.replace(/[^0-9]/g, '')
+      );
+      if (matchingTopic) {
+        await handleStartTopicQuiz(matchingTopic.id, matchingTopic.name, matchingTopic.topic_code);
+        return;
       }
+
+      // Or matching subtopic
+      const matchingSub = allCertSubtopics.find((s) => s.subtopic_code === topicCode);
+      if (matchingSub) {
+        const parentT = allCertTopics.find((t) => t.id === matchingSub.topic_id);
+        await handleStartSectionQuiz(matchingSub, parentT);
+        return;
+      }
+
+      // Otherwise domain drill
+      const domainNum = parseInt(topicCode[0]) || 1;
+      const targetDomain = domains.find((d) => d.domain_number === domainNum);
+      if (targetDomain) {
+        await handleStartDomainQuiz(targetDomain.id);
+      } else {
+        alert(`No questions found specifically for ${topicCode}.`);
+        setLoading(false);
+      }
+    } catch (err: any) {
+      console.error('Error starting concept quiz:', err);
+      setLoading(false);
     }
   };
 
@@ -474,6 +612,7 @@ export default function LearnPage() {
           activeCertificationSlug={effectiveCertSlug}
           activeMaterialId={selectedMaterialId}
           onSelectMaterial={(m) => setSelectedMaterialId(m.id)}
+          onPracticeSection={handleStartSectionQuiz}
           onPracticeChapter={(domId) => handleStartDomainQuiz(domId)}
         />
       ) : viewMode === 'calculators' ? (
@@ -693,12 +832,13 @@ export default function LearnPage() {
       {activeSubtopic && (
         <LessonViewer
           subtopic={activeSubtopic}
-          topic={topics.find(t => t.id === activeSubtopic.topic_id)}
+          topic={allCertTopics.find((t) => t.id === activeSubtopic.topic_id) || topics.find((t) => t.id === activeSubtopic.topic_id)}
           domain={currentDomain}
           allSubtopics={subtopics}
           onSelectSubtopic={(nextSub) => setActiveSubtopic(nextSub)}
           onClose={() => setActiveSubtopic(null)}
-          onPracticeTopic={handleStartTopicQuiz}
+          onPracticeSection={handleStartSectionQuiz}
+          onPracticeTopic={(tId) => handleStartTopicQuiz(tId)}
         />
       )}
 
@@ -758,7 +898,7 @@ export default function LearnPage() {
               {completedTopicSubs}/{topicSubs.length} done
             </span>
             <button
-              onClick={() => handleStartTopicQuiz(topic.id)}
+              onClick={() => handleStartTopicQuiz(topic.id, topic.name, topic.topic_code)}
               className="btn btn-secondary btn-sm"
               style={{ fontSize: 'var(--text-xs)', padding: 'var(--space-1) var(--space-3)' }}
             >

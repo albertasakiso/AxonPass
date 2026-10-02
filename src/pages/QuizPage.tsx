@@ -179,6 +179,7 @@ export default function QuizPage() {
     isAnswerSubmitted,
     answers,
     flaggedQuestionIds,
+    sectionTitle,
     timeLimitSeconds,
     timeRemainingSeconds,
     isTimerRunning,
@@ -318,6 +319,34 @@ export default function QuizPage() {
           </button>
         </div>
       </div>
+
+      {/* Section Practice Context Banner */}
+      {sectionTitle && (
+        <div
+          className="animate-fade-in"
+          style={{
+            marginBottom: 'var(--space-3)',
+            padding: '8px 14px',
+            backgroundColor: 'var(--color-surface-subtle)',
+            borderRadius: 'var(--radius-md)',
+            borderLeft: '4px solid var(--color-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 'var(--text-xs)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '1.1rem' }}>🎯</span>
+            <span>
+              Practicing Section: <strong>{sectionTitle}</strong>
+            </span>
+          </div>
+          <span className="badge badge-primary font-mono" style={{ fontSize: '10px' }}>
+            {questions.length} Questions
+          </span>
+        </div>
+      )}
 
       {/* Progress & Flag bar */}
       <QuizProgress

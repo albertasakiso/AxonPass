@@ -23,6 +23,7 @@ interface LessonViewerProps {
   onClose: () => void;
   onSelectSubtopic?: (subtopic: Subtopic) => void;
   onPracticeTopic?: (topicId: string) => void;
+  onPracticeSection?: (subtopic: Subtopic, topic?: Topic | null) => void;
 }
 
 export const LessonViewer: React.FC<LessonViewerProps> = ({
@@ -33,6 +34,7 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
   onClose,
   onSelectSubtopic,
   onPracticeTopic,
+  onPracticeSection,
 }) => {
   const {
     toggleSubtopicComplete,
@@ -230,6 +232,50 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
               </p>
             )}
           </div>
+
+          {/* Section Practice Callout Banner */}
+          <div
+            className="card mt-6 mb-2"
+            style={{
+              padding: 'var(--space-4) var(--space-5)',
+              backgroundColor: 'var(--color-surface-subtle)',
+              border: '1px solid var(--border-color)',
+              borderLeft: '4px solid var(--color-primary)',
+              borderRadius: 'var(--radius-lg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 'var(--space-3)',
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                <span style={{ fontSize: '1.1rem' }}>🎯</span>
+                <h4 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'bold', color: 'var(--color-ink)' }}>
+                  Finished reading {subtopic.subtopic_code}?
+                </h4>
+              </div>
+              <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)' }}>
+                Lock in your knowledge with 10 questions focused <strong>exclusively</strong> on {subtopic.name}.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onPracticeSection) {
+                  onPracticeSection(subtopic, topic);
+                } else if (onPracticeTopic && topic) {
+                  onPracticeTopic(topic.id);
+                }
+              }}
+              className="btn btn-primary btn-sm"
+              style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}
+            >
+              ⚡ Practice This Section Questions (10Q)
+            </button>
+          </div>
         </div>
 
         {/* Footer Actions & Sequential Navigation */}
@@ -257,15 +303,26 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
             )}
           </div>
 
-          {/* Center: Topic Practice Launcher & Relearn status */}
+          {/* Center: Topic / Section Practice Launcher */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            {onPracticeTopic && topic && (
+            {(onPracticeSection || (onPracticeTopic && topic)) && (
               <button
-                onClick={() => onPracticeTopic(topic.id)}
-                className="btn btn-secondary btn-sm"
-                style={{ backgroundColor: 'var(--color-primary-50)', color: 'var(--color-primary)', borderColor: 'var(--color-primary-200)' }}
+                onClick={() => {
+                  if (onPracticeSection) {
+                    onPracticeSection(subtopic, topic);
+                  } else if (onPracticeTopic && topic) {
+                    onPracticeTopic(topic.id);
+                  }
+                }}
+                className="btn btn-primary btn-sm"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 'bold',
+                }}
               >
-                ⚡ Practice Section {topic.topic_code}
+                ⚡ Practice Section {subtopic.subtopic_code}
               </button>
             )}
           </div>

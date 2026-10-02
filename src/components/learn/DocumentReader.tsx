@@ -69,6 +69,7 @@ interface DocumentReaderProps {
   activeCertificationSlug?: string;
   activeMaterialId?: string | null;
   onSelectMaterial: (material: StudyMaterial) => void;
+  onPracticeSection?: (subtopic: Subtopic, topic?: Topic | null) => void;
   onPracticeChapter?: (domainId: string) => void;
   onClose?: () => void;
 }
@@ -82,6 +83,7 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
   activeCertificationSlug = 'cisa',
   activeMaterialId,
   onSelectMaterial,
+  onPracticeSection,
   onPracticeChapter,
   onClose,
 }) => {
@@ -593,6 +595,95 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
                   }}
                 >
                   <strong>💡 Exam Watch Guidance:</strong> {selectedSubtopic.exam_tips}
+                </div>
+              )}
+
+              {/* Practice This Section Card */}
+              {activeTab === 'subtopics' && selectedSubtopic && (
+                <div
+                  className="card mt-6 mb-4"
+                  style={{
+                    padding: 'var(--space-4) var(--space-5)',
+                    backgroundColor: 'var(--color-surface-subtle)',
+                    border: '1px solid var(--border-color)',
+                    borderLeft: '4px solid var(--color-primary)',
+                    borderRadius: 'var(--radius-lg)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 'var(--space-3)',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                      <span style={{ fontSize: '1.1rem' }}>🎯</span>
+                      <h4 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'bold', color: 'var(--color-ink)' }}>
+                        Finished reading {selectedSubtopic.subtopic_code}?
+                      </h4>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)' }}>
+                      Practice targeted questions for <strong>{selectedSubtopic.name}</strong> only.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onPracticeSection) {
+                        const parentTopic = allTopics.find((t) => t.id === selectedSubtopic.topic_id);
+                        onPracticeSection(selectedSubtopic, parentTopic);
+                      }
+                    }}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  >
+                    ⚡ Practice This Section ({selectedSubtopic.subtopic_code})
+                  </button>
+                </div>
+              )}
+
+              {/* Practice Chapter Questions Card */}
+              {activeTab === 'chapters' && selectedMaterial && selectedMaterial.domain_id && (
+                <div
+                  className="card mt-6 mb-4"
+                  style={{
+                    padding: 'var(--space-4) var(--space-5)',
+                    backgroundColor: 'var(--color-surface-subtle)',
+                    border: '1px solid var(--border-color)',
+                    borderLeft: '4px solid var(--color-primary)',
+                    borderRadius: 'var(--radius-lg)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: 'var(--space-3)',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                      <span style={{ fontSize: '1.1rem' }}>🎯</span>
+                      <h4 style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 'bold', color: 'var(--color-ink)' }}>
+                        Finished {selectedMaterial.title}?
+                      </h4>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)' }}>
+                      Test your understanding of the concepts covered in this chapter.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onPracticeChapter && selectedMaterial.domain_id) {
+                        onPracticeChapter(selectedMaterial.domain_id);
+                      }
+                    }}
+                    className="btn btn-primary btn-sm"
+                    style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                  >
+                    ⚡ Practice Chapter Questions
+                  </button>
                 </div>
               )}
 
