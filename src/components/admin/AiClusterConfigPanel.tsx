@@ -313,11 +313,10 @@ export default function AiClusterConfigPanel() {
 
       {/* Modal for Creating / Editing Machine */}
       {isModalOpen && editingMachine && (
-        <div className="reader-modal-overlay animate-fade-in" onClick={() => setIsModalOpen(false)}>
+        <div className="reader-modal-overlay animate-fade-in">
           <div
             className="card"
             style={{ maxWidth: '520px', width: '92%', margin: 'auto', padding: 'var(--space-5)' }}
-            onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ margin: '0 0 var(--space-3) 0', fontSize: 'var(--text-base)' }}>
               {editingMachine.id ? '✏️ Edit Compute Machine' : '＋ Register AI Machine Node'}

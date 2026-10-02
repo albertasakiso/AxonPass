@@ -387,8 +387,8 @@ export default function SettingsPage() {
 
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (
-        <div className="reader-modal-overlay animate-fade-in" onClick={() => setShowResetConfirm(false)}>
-          <div className="card" style={{ maxWidth: '440px', margin: 'auto', padding: 'var(--space-6)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="reader-modal-overlay animate-fade-in">
+          <div className="card" style={{ maxWidth: '440px', margin: 'auto', padding: 'var(--space-6)' }}>
             <h3 style={{ color: 'var(--color-error)', margin: '0 0 var(--space-2) 0' }}>⚠️ Reset All Progress?</h3>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink-muted)', marginBottom: 'var(--space-6)' }}>
               This will erase all test attempts, Leitner memory box statistics, and study streak records from your browser's IndexedDB. This action cannot be undone.

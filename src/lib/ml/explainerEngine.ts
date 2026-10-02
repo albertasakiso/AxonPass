@@ -168,6 +168,195 @@ export function analyzeDecisionOperator(stem: string, _certCode: string = 'CISA'
 }
 
 /**
+ * Synthesizes an authoritative, concrete pedagogical explanation of WHY the correct answer is correct,
+ * completely replacing raw dumped references or citation headers with genuine technical reasoning.
+ */
+export function synthesizeConcreteCorrectReasoning(
+  question: Question,
+  correctOptionText: string,
+  node: KnowledgeNode,
+  operatorAnalysis: OperatorAnalysis
+): { concreteReason: string; sourceCitation: string } {
+  let rawRationale = (question.rationale || '').trim();
+  let citation = node.manualSection;
+
+  // Extract explicit citation header if present (e.g., "Explanation/Reference: Section: Governance and Management of IT")
+  const refMatch = rawRationale.match(/(?:explanation\s*\/\s*)?reference:\s*(?:section:)?\s*([^\n\r.]+)/i);
+  if (refMatch) {
+    citation = refMatch[1].trim() || node.manualSection;
+    rawRationale = rawRationale.replace(/(?:explanation\s*\/\s*)?reference:\s*(?:section:)?\s*[^\n\r.]+[.\n\r]*/i, '').trim();
+  }
+
+  // If the remaining rationale already has substantive, deep sentences (> 45 chars and has explanatory words)
+  if (
+    rawRationale.length > 45 &&
+    (rawRationale.toLowerCase().includes('because') ||
+      rawRationale.toLowerCase().includes('requires') ||
+      rawRationale.toLowerCase().includes('ensure') ||
+      rawRationale.toLowerCase().includes('provides') ||
+      rawRationale.toLowerCase().includes('is the primary') ||
+      rawRationale.toLowerCase().includes('is the most') ||
+      rawRationale.toLowerCase().includes('in order to'))
+  ) {
+    return {
+      concreteReason: rawRationale,
+      sourceCitation: citation,
+    };
+  }
+
+  // Otherwise, construct substantive domain-grounded pedagogical explanation:
+  const actionText = correctOptionText.replace(/\.$/, '').trim();
+  const stemLower = question.stem.toLowerCase();
+  const optLower = correctOptionText.toLowerCase();
+
+  let domainExplanation = '';
+
+  if (optLower.includes('regulat') || optLower.includes('legal') || stemLower.includes('jurisdiction') || stemLower.includes('regulat') || stemLower.includes('statut')) {
+    domainExplanation = `Statutory laws and regulatory requirements carry binding legal authority across operating jurisdictions. Direct coordination with legal and regulatory compliance officers is mandatory to establish the authoritative legal baseline across all applicable territories before determining audit scope or designing controls. Operating without their explicit requirements risks legal non-compliance, regulatory sanctions, and misaligned audit objectives.`;
+  } else if (optLower.includes('risk assessment') || optLower.includes('business impact') || stemLower.includes('priorit') || stemLower.includes('first')) {
+    domainExplanation = `A comprehensive risk assessment provides the quantitative and qualitative foundation required to prioritize organizational resources toward the highest risk exposures. Establishing this risk baseline is the essential prerequisite before allocating capital, configuring technical controls, or initiating remediation.`;
+  } else if (optLower.includes('segregation of duties') || optLower.includes('least privilege') || optLower.includes('access control') || optLower.includes('role-based')) {
+    domainExplanation = `Enforcing strict separation of duties and least-privilege access minimizes single points of human failure, prevents fraudulent concealment, and establishes dual-custody oversight across critical business functions.`;
+  } else if (optLower.includes('governance') || optLower.includes('steering committee') || optLower.includes('board') || optLower.includes('senior management approval')) {
+    domainExplanation = `Sound IT governance requires executive alignment where the steering committee and senior leadership maintain ultimate accountability for strategic direction, policy authorization, and risk appetite thresholds.`;
+  } else if (optLower.includes('independent') || optLower.includes('substantive test') || optLower.includes('verify') || optLower.includes('sample') || optLower.includes('evidence')) {
+    domainExplanation = `Professional audit standards mandate gathering sufficient, reliable, and independent evidence through direct substantive testing rather than relying on passive inquiry or uncorroborated management assertions.`;
+  } else if (optLower.includes('incident response') || optLower.includes('contain') || optLower.includes('isolate') || optLower.includes('quarantine')) {
+    domainExplanation = `During an active security event or operational crisis, rapid containment and system isolation stops lateral adversarial movement and limits the blast radius before launching forensic investigation or root-cause eradication.`;
+  } else if (optLower.includes('business continuity') || optLower.includes('disaster recovery') || optLower.includes('rto') || optLower.includes('rpo')) {
+    domainExplanation = `Recovery Time Objectives (RTO) and Recovery Point Objectives (RPO) dictated by the Business Impact Analysis (BIA) establish the non-negotiable operational thresholds for data preservation and system restoration.`;
+  } else {
+    domainExplanation = `This action directly operationalizes the core standard of ${node.name}. Under the ${operatorAnalysis.highlightPhrase}, it resolves the primary risk factor while maintaining regulatory compliance and authoritative alignment with ${node.manualSection}.`;
+  }
+
+  const concreteReason = `"${actionText}" is authoritatively correct because it directly addresses the core operational requirement in this scenario. ${domainExplanation}`;
+
+  return {
+    concreteReason,
+    sourceCitation: citation,
+  };
+}
+
+/**
+ * Synthesizes a concrete, pedagogically rich explanation of why a distractor is flawed,
+ * completely replacing vague "is suboptimal under standard" boilerplate.
+ */
+export function synthesizeConcreteDistractorFlaw(
+  distractorText: string,
+  stemText: string,
+  _correctOptionText: string,
+  node: KnowledgeNode,
+  operatorAnalysis: OperatorAnalysis
+): { flawTitle: string; detailedFlaw: string; verdict: OptionJustification['verdict'] } {
+  const dLower = distractorText.toLowerCase();
+  const sLower = stemText.toLowerCase();
+
+  // 1. Voluntary Framework vs Statutory Law Trap
+  if (
+    (dLower.includes('industry standard') || dLower.includes('framework') || dLower.includes('best practice')) &&
+    (sLower.includes('legal') || sLower.includes('regulat') || sLower.includes('law') || sLower.includes('jurisdiction') || sLower.includes('statut'))
+  ) {
+    return {
+      flawTitle: 'Voluntary Standard Fallacy',
+      detailedFlaw: `Industry frameworks (such as ISO/IEC 27001 or COBIT) are voluntary best practices and do not carry the force of statutory law. Auditing exclusively to industry standards leaves the organization exposed to statutory non-compliance and legal liabilities in jurisdictions with specific statutory mandates.`,
+      verdict: 'PLAUSIBLE_DISTRACTOR',
+    };
+  }
+
+  // 2. Extreme / Strictest Standard Over-Scoping Trap
+  if (
+    dLower.includes('highest requirement') ||
+    dLower.includes('strictest') ||
+    dLower.includes('all systems') ||
+    dLower.includes('exclusively') ||
+    dLower.includes('every component') ||
+    dLower.includes('eliminate all risk')
+  ) {
+    return {
+      flawTitle: 'Over-Scoping & Extremism Trap',
+      detailedFlaw: `Auditing to the standard with the "highest requirements" or imposing universal extremes is an over-scoping fallacy. Imposing controls that exceed applicable legal, statutory, or business mandates creates exorbitant costs, operational paralysis, and may conflict with local regulations in other operating jurisdictions.`,
+      verdict: 'PLAUSIBLE_DISTRACTOR',
+    };
+  }
+
+  // 3. Circular Internal Policy Bias Trap
+  if (
+    dLower.includes('policies and procedures of the organization') ||
+    dLower.includes('internal policies') ||
+    dLower.includes('company guidelines') ||
+    dLower.includes('internal standard operating')
+  ) {
+    return {
+      flawTitle: 'Internal Circularity Trap',
+      detailedFlaw: `Auditing solely against existing internal organizational policies provides false assurance. Internal policies may be outdated, incomplete, or fundamentally non-compliant with external statutory and regulatory amendments enacted across operating jurisdictions.`,
+      verdict: 'PLAUSIBLE_DISTRACTOR',
+    };
+  }
+
+  // 4. Premature Technical Action / Inverted Procedural Sequence
+  if (
+    (dLower.includes('implement') || dLower.includes('reconfigure') || dLower.includes('deploy') || dLower.includes('install') || dLower.includes('patch')) &&
+    (operatorAnalysis.operator === 'FIRST' || operatorAnalysis.operator === 'INITIAL' || sLower.includes('first') || sLower.includes('initial'))
+  ) {
+    return {
+      flawTitle: 'Premature Remediation Trap (Wrong Timing)',
+      detailedFlaw: `Technical configuration changes or control implementations must never be executed before completing proper scoping, risk assessment, and stakeholder authorization. Jumping straight to remediation skips critical prerequisite analysis.`,
+      verdict: 'SECONDARY_ACTION',
+    };
+  }
+
+  // 5. Premature Reporting / Escalation
+  if (
+    dLower.includes('report to executive') ||
+    dLower.includes('notify the board') ||
+    dLower.includes('inform law enforcement') ||
+    dLower.includes('escalate immediately')
+  ) {
+    return {
+      flawTitle: 'Premature Escalation Trap',
+      detailedFlaw: `Reporting or escalation without first obtaining verified factual evidence, assessing severity, and determining business impact creates unnecessary organizational alarm and violates standard procedural triage.`,
+      verdict: 'SECONDARY_ACTION',
+    };
+  }
+
+  // 6. Auditor Operational Independence Violation
+  if (
+    dLower.includes('auditor should implement') ||
+    dLower.includes('auditor should design') ||
+    dLower.includes('auditor should approve') ||
+    dLower.includes('auditor should manage')
+  ) {
+    return {
+      flawTitle: 'Independence Impairment Violation',
+      detailedFlaw: `An IS auditor must maintain strict operational independence and objectivity. The auditor provides independent evaluation and advisory findings, but must never design, implement, or manage operational systems.`,
+      verdict: 'IRRELEVANT_OUT_OF_SCOPE',
+    };
+  }
+
+  // 7. Passive / Inadequate Due Diligence
+  if (
+    dLower.includes('accept the') ||
+    dLower.includes('rely on vendor') ||
+    dLower.includes('rely solely on inquiry') ||
+    dLower.includes('assume compliance') ||
+    dLower.includes('take no action')
+  ) {
+    return {
+      flawTitle: 'Inadequate Due Care Trap',
+      detailedFlaw: `Professional audit standards require corroborative substantive testing and independent verification. Relying on passive assumptions or unsubstantiated inquiries violates the professional standard of due care.`,
+      verdict: 'PLAUSIBLE_DISTRACTOR',
+    };
+  }
+
+  // 8. Dynamic Contextual Fallback
+  return {
+    flawTitle: 'Suboptimal Focus',
+    detailedFlaw: `"${distractorText}" addresses a tangential operational activity rather than the primary mandate governed by ${node.name}. Under ${operatorAnalysis.highlightPhrase}, this option fails to satisfy the critical decision criteria required in this scenario.`,
+    verdict: operatorAnalysis.operator === 'FIRST' ? 'SECONDARY_ACTION' : 'PLAUSIBLE_DISTRACTOR',
+  };
+}
+
+/**
  * Builds surgical Option Comparison Matrix with justifications for all 4 MCQ choices.
  */
 export function buildOptionJustifications(
@@ -183,6 +372,14 @@ export function buildOptionJustifications(
     { label: 'D', text: question.option_d, rationaleField: question.incorrect_rationale_d },
   ];
 
+  const correctOpt = options.find((o) => o.label === correctKey) || options[0];
+  const { concreteReason, sourceCitation } = synthesizeConcreteCorrectReasoning(
+    question,
+    correctOpt.text,
+    node,
+    operatorAnalysis
+  );
+
   return options.map((opt) => {
     const isCorrect = opt.label === correctKey;
 
@@ -192,34 +389,41 @@ export function buildOptionJustifications(
         text: opt.text,
         verdict: 'CORRECT_KEY',
         confidenceScore: 0.98,
-        reasoning: question.rationale || `Directly fulfills the ${operatorAnalysis.highlightPhrase} under ${node.name}.`,
-        flawOrAdvantage: `Directly aligns with ${node.manualSection} standards and resolves the core risk.`,
+        reasoning: concreteReason,
+        flawOrAdvantage: `Authoritative standard: Directly satisfies ${node.name} and eliminates the primary risk.`,
+        sourceCitation: sourceCitation,
+      };
+    }
+
+    // Check if question has explicit pre-authored distractor rationale
+    if (opt.rationaleField && opt.rationaleField.trim().length > 20) {
+      return {
+        label: opt.label,
+        text: opt.text,
+        verdict: 'PLAUSIBLE_DISTRACTOR',
+        confidenceScore: 0.88,
+        reasoning: opt.rationaleField.trim(),
+        flawOrAdvantage: 'Suboptimal choice compared to the authoritative standard.',
         sourceCitation: node.manualSection,
       };
     }
 
-    const explicitRationale = opt.rationaleField;
-    let verdict: OptionJustification['verdict'] = 'PLAUSIBLE_DISTRACTOR';
-    let flaw = 'Plausible operational practice, but secondary to the primary objective in this scenario.';
-
-    if (operatorAnalysis.operator === 'FIRST') {
-      verdict = 'SECONDARY_ACTION';
-      flaw = 'This represents a later-stage remediation or reporting action; it must not be performed before initial assessment/containment.';
-    } else if (operatorAnalysis.operator === 'PRIMARY') {
-      verdict = 'PLAUSIBLE_DISTRACTOR';
-      flaw = 'Addresses a tactical symptom rather than establishing the root governance mandate or overarching policy.';
-    } else if (operatorAnalysis.operator === 'LEAST') {
-      verdict = 'CORRECT_KEY';
-      flaw = 'This is an effective standard practice, which is why it is NOT the correct answer for an inverse/LEAST question.';
-    }
+    // Synthesize concrete pedagogical flaw
+    const { flawTitle, detailedFlaw, verdict } = synthesizeConcreteDistractorFlaw(
+      opt.text,
+      question.stem,
+      correctOpt.text,
+      node,
+      operatorAnalysis
+    );
 
     return {
       label: opt.label,
       text: opt.text,
       verdict: verdict,
       confidenceScore: 0.88,
-      reasoning: explicitRationale || `${opt.text} is suboptimal under the ${operatorAnalysis.decisionRule}`,
-      flawOrAdvantage: flaw,
+      reasoning: detailedFlaw,
+      flawOrAdvantage: `Exam Trap: ${flawTitle}`,
       sourceCitation: node.manualSection,
     };
   });

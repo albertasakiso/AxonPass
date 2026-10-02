@@ -70,101 +70,122 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
   };
 
   return (
-    <div className="reader-modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="reader-modal-dialog" onClick={(e) => e.stopPropagation()}>
-        
-        {/* Top Header Bar */}
-        <div className="reader-modal-header" style={{ flexWrap: 'wrap', gap: 'var(--space-2)' }}>
-          <div style={{ flex: 1, minWidth: '240px' }}>
-            <div className="ereader-meta-badge" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+    <div className="lesson-fullscreen-page animate-fade-in" role="region" aria-label="Lesson Content Reader">
+      {/* Top Header Bar */}
+      <div className="lesson-page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flex: 1, minWidth: '240px' }}>
+          {/* Back to Syllabus / Course Outline button */}
+          <button
+            onClick={onClose}
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}
+            title="Return to Course Syllabus"
+          >
+            <span>←</span>
+            <span>Syllabus</span>
+          </button>
+
+          {/* Breadcrumb Hierarchy */}
+          <div className="lesson-breadcrumb">
+            <span className="lesson-breadcrumb-item">{domain ? `Domain ${domain.domain_number}` : 'Module'}</span>
+            <span>›</span>
+            {topic && (
+              <>
+                <span className="lesson-breadcrumb-item">{topic.topic_code}</span>
+                <span>›</span>
+              </>
+            )}
+            <span className="lesson-breadcrumb-active">{subtopic.subtopic_code} {subtopic.name}</span>
+          </div>
+        </div>
+
+        {/* Top Actions: Counter, Complete, Relearn, Close */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          {allSubtopics.length > 0 && (
+            <span className="desktop-only" style={{ fontSize: 'var(--text-xs)', fontWeight: 'bold', color: 'var(--color-primary)', marginRight: 'var(--space-2)' }}>
+              Lesson {currentIndex + 1} of {allSubtopics.length}
+            </span>
+          )}
+
+          {/* Mark as Completed Button */}
+          <button
+            onClick={handleToggleComplete}
+            className={`btn btn-sm ${isCompleted ? 'btn-success' : 'btn-secondary'}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontWeight: 'bold',
+              fontSize: 'var(--text-xs)',
+              backgroundColor: isCompleted ? 'var(--color-success)' : undefined,
+              color: isCompleted ? '#fff' : undefined,
+            }}
+            title={isCompleted ? 'Completed (Tap to undo)' : 'Mark lesson as completed'}
+          >
+            <span>{isCompleted ? '✓ Completed' : 'Mark Complete'}</span>
+          </button>
+
+          {/* Relearn Flag Button */}
+          <button
+            onClick={handleToggleRelearn}
+            className={`btn btn-sm ${isRelearn ? 'btn-warning' : 'btn-secondary'}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: 'var(--text-xs)',
+              backgroundColor: isRelearn ? '#f59e0b' : undefined,
+              color: isRelearn ? '#fff' : undefined,
+              borderColor: isRelearn ? '#d97706' : undefined,
+            }}
+            title="Flag this submodule for repeat study"
+          >
+            <span>🔄</span>
+            <span className="desktop-only">{isRelearn ? 'Needs Relearning' : 'Relearn'}</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            className="btn btn-secondary btn-sm"
+            style={{ minHeight: '32px', width: '32px', padding: 0, borderRadius: 'var(--radius-full)' }}
+            title="Return to Syllabus (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* Lesson Progress Bar */}
+      {allSubtopics.length > 0 && (
+        <div style={{ width: '100%', height: '3px', backgroundColor: 'var(--color-bg-muted)' }}>
+          <div
+            style={{
+              height: '100%',
+              backgroundColor: isCompleted ? 'var(--color-success)' : 'var(--color-primary)',
+              width: `${Math.round(((currentIndex + 1) / allSubtopics.length) * 100)}%`,
+              transition: 'width 0.3s ease',
+            }}
+          />
+        </div>
+      )}
+
+      {/* Scrollable Full-Page Lesson Body */}
+      <div className="lesson-page-body">
+        <div className="lesson-page-container">
+          {/* Subtopic Header Banner */}
+          <div style={{ marginBottom: 'var(--space-6)' }}>
+            <div className="ereader-meta-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
               <span>{domain ? `Domain ${domain.domain_number}: ${domain.name}` : 'Module'}</span>
               <span>•</span>
               <span>{topic ? `Section ${topic.topic_code}` : ''}</span>
               <span>•</span>
               <span>⏱ {subtopic.estimated_read_minutes || 15} min read</span>
-              {allSubtopics.length > 0 && (
-                <>
-                  <span>•</span>
-                  <span style={{ fontWeight: 'bold', color: 'var(--color-primary)' }}>
-                    Lesson {currentIndex + 1} of {allSubtopics.length}
-                  </span>
-                </>
-              )}
             </div>
-
-            <h2 className="ereader-title" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
-              <span className="topic-code-tag" style={{ fontSize: 'var(--text-sm)' }}>{subtopic.subtopic_code}</span>
+            <h1 className="ereader-title" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', margin: 0 }}>
+              <span className="topic-code-tag" style={{ fontSize: 'var(--text-base)' }}>{subtopic.subtopic_code}</span>
               <span>{subtopic.name}</span>
-            </h2>
+            </h1>
           </div>
-
-          {/* Top Actions: Complete, Relearn, Close */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            
-            {/* Mark as Completed Button */}
-            <button
-              onClick={handleToggleComplete}
-              className={`btn btn-sm ${isCompleted ? 'btn-success' : 'btn-secondary'}`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontWeight: 'bold',
-                fontSize: 'var(--text-xs)',
-                backgroundColor: isCompleted ? 'var(--color-success)' : undefined,
-                color: isCompleted ? '#fff' : undefined,
-              }}
-              title={isCompleted ? 'Completed (Tap to undo)' : 'Mark lesson as completed'}
-            >
-              <span>{isCompleted ? '✓ Completed' : 'Mark as Complete'}</span>
-            </button>
-
-            {/* Relearn Flag Button */}
-            <button
-              onClick={handleToggleRelearn}
-              className={`btn btn-sm ${isRelearn ? 'btn-warning' : 'btn-secondary'}`}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: 'var(--text-xs)',
-                backgroundColor: isRelearn ? '#f59e0b' : undefined,
-                color: isRelearn ? '#fff' : undefined,
-                borderColor: isRelearn ? '#d97706' : undefined,
-              }}
-              title="Flag this submodule for repeat study"
-            >
-              <span>🔄</span>
-              <span>{isRelearn ? 'Needs Relearning' : 'Relearn'}</span>
-            </button>
-
-            <button
-              onClick={onClose}
-              className="btn btn-secondary"
-              style={{ minHeight: '36px', width: '36px', padding: 0, borderRadius: 'var(--radius-full)' }}
-              title="Close (Esc)"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-
-        {/* Lesson Progress Bar */}
-        {allSubtopics.length > 0 && (
-          <div style={{ width: '100%', height: '3px', backgroundColor: 'var(--color-bg-muted)' }}>
-            <div
-              style={{
-                height: '100%',
-                backgroundColor: isCompleted ? 'var(--color-success)' : 'var(--color-primary)',
-                width: `${Math.round(((currentIndex + 1) / allSubtopics.length) * 100)}%`,
-                transition: 'width 0.3s ease',
-              }}
-            />
-          </div>
-        )}
-
-        {/* Scrollable Lesson Body */}
-        <div className="reader-modal-body">
           
           {/* Celebration Banner when just completed */}
           {justCelebrated && (
@@ -278,79 +299,81 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Footer Actions & Sequential Navigation */}
-        <div className="reader-modal-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-          
-          {/* Left: Previous Lesson Navigation */}
-          <div>
-            {prevSubtopic ? (
-              <button
-                onClick={() => onSelectSubtopic && onSelectSubtopic(prevSubtopic)}
-                className="btn btn-secondary btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
-              >
-                <span>←</span>
-                <span className="desktop-only">{prevSubtopic.subtopic_code} {prevSubtopic.name.slice(0, 20)}...</span>
-                <span className="mobile-only">Prev</span>
-              </button>
-            ) : (
-              <button
-                onClick={onClose}
-                className="btn btn-secondary btn-sm"
-              >
-                Close
-              </button>
-            )}
-          </div>
-
-          {/* Center: Topic / Section Practice Launcher */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            {(onPracticeSection || (onPracticeTopic && topic)) && (
-              <button
-                onClick={() => {
-                  if (onPracticeSection) {
-                    onPracticeSection(subtopic, topic);
-                  } else if (onPracticeTopic && topic) {
-                    onPracticeTopic(topic.id);
-                  }
-                }}
-                className="btn btn-primary btn-sm"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: 'bold',
-                }}
-              >
-                ⚡ Practice Section {subtopic.subtopic_code}
-              </button>
-            )}
-          </div>
-
-          {/* Right: Next Lesson Navigation */}
-          <div>
-            {nextSubtopic ? (
-              <button
-                onClick={() => onSelectSubtopic && onSelectSubtopic(nextSubtopic)}
-                className="btn btn-primary btn-sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
-              >
-                <span className="desktop-only">{nextSubtopic.subtopic_code} {nextSubtopic.name.slice(0, 20)}...</span>
-                <span className="mobile-only">Next</span>
-                <span>→</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleToggleComplete}
-                className="btn btn-success btn-sm"
-              >
-                {isCompleted ? '✓ All Done' : '✓ Mark Done & Finish'}
-              </button>
-            )}
-          </div>
-
+      {/* Footer Actions & Sequential Navigation */}
+      <div className="lesson-page-footer">
+        
+        {/* Left: Previous Lesson Navigation */}
+        <div>
+          {prevSubtopic ? (
+            <button
+              onClick={() => onSelectSubtopic && onSelectSubtopic(prevSubtopic)}
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
+            >
+              <span>←</span>
+              <span className="desktop-only">{prevSubtopic.subtopic_code} {prevSubtopic.name.slice(0, 24)}...</span>
+              <span className="mobile-only">Prev</span>
+            </button>
+          ) : (
+            <button
+              onClick={onClose}
+              className="btn btn-secondary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
+            >
+              <span>←</span>
+              <span>Back to Syllabus</span>
+            </button>
+          )}
         </div>
+
+        {/* Center: Topic / Section Practice Launcher */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          {(onPracticeSection || (onPracticeTopic && topic)) && (
+            <button
+              onClick={() => {
+                if (onPracticeSection) {
+                  onPracticeSection(subtopic, topic);
+                } else if (onPracticeTopic && topic) {
+                  onPracticeTopic(topic.id);
+                }
+              }}
+              className="btn btn-primary btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 'bold',
+              }}
+            >
+              ⚡ Practice Section {subtopic.subtopic_code}
+            </button>
+          )}
+        </div>
+
+        {/* Right: Next Lesson Navigation */}
+        <div>
+          {nextSubtopic ? (
+            <button
+              onClick={() => onSelectSubtopic && onSelectSubtopic(nextSubtopic)}
+              className="btn btn-primary btn-sm"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}
+            >
+              <span className="desktop-only">{nextSubtopic.subtopic_code} {nextSubtopic.name.slice(0, 24)}...</span>
+              <span className="mobile-only">Next</span>
+              <span>→</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleToggleComplete}
+              className="btn btn-success btn-sm"
+            >
+              {isCompleted ? '✓ Completed' : '✓ Mark Done & Finish'}
+            </button>
+          )}
+        </div>
+
       </div>
     </div>
   );

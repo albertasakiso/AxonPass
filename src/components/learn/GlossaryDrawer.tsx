@@ -30,8 +30,8 @@ export const GlossaryDrawer: React.FC<GlossaryDrawerProps> = ({ terms, onClose }
   }, [terms, searchTerm, selectedCategory]);
 
   return (
-    <div className="reader-modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="reader-modal-dialog" onClick={(e) => e.stopPropagation()}>
+    <div className="reader-modal-overlay animate-fade-in">
+      <div className="reader-modal-dialog">
         
         {/* Header */}
         <div className="reader-modal-header">

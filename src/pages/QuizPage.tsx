@@ -198,10 +198,12 @@ export default function QuizPage() {
     resumeQuiz,
     tickTimer,
     finishQuiz,
+    resetQuiz,
   } = useQuizStore();
 
   const [showGridModal, setShowGridModal] = useState(false);
   const [showConfirmFinish, setShowConfirmFinish] = useState(false);
+  const [showStopModal, setShowStopModal] = useState(false);
   const [showFormulaDrawer, setShowFormulaDrawer] = useState(false);
 
   // Navigate to results when completed
@@ -308,6 +310,27 @@ export default function QuizPage() {
             title="Formula Reference Sheet"
           >
             🧮 Formulas
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-danger"
+            onClick={() => {
+              pauseQuiz();
+              setShowStopModal(true);
+            }}
+            title="Stop or Abandon Quiz Session"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              borderColor: '#ef4444',
+              color: '#ef4444',
+              fontWeight: 'bold',
+            }}
+          >
+            <span>⏹</span>
+            <span>Stop Quiz</span>
           </button>
 
           <button
@@ -437,8 +460,8 @@ export default function QuizPage() {
 
       {/* Question Navigator Modal */}
       {showGridModal && (
-        <div className="modal-backdrop" onClick={() => setShowGridModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+        <div className="modal-backdrop" style={{ zIndex: 'var(--z-modal)' }}>
+          <div className="modal" style={{ maxWidth: '600px' }}>
             <ReviewGrid
               questions={questions}
               answers={answers}
@@ -456,7 +479,7 @@ export default function QuizPage() {
 
       {/* Formula & Calculator Reference Drawer */}
       {showFormulaDrawer && (
-        <div className="modal-backdrop" onClick={() => setShowFormulaDrawer(false)}>
+        <div className="modal-backdrop" style={{ zIndex: 'var(--z-modal)' }}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px' }}>
             <div className="modal-header">
               <h3>🧮 Exam Formula Reference</h3>
@@ -508,9 +531,95 @@ export default function QuizPage() {
         </div>
       )}
 
+      {/* Stop Quiz Modal */}
+      {showStopModal && (
+        <div className="modal-backdrop" style={{ zIndex: 'var(--z-modal)' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '540px' }}>
+            <div className="modal-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.3rem' }}>⏹</span>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-base)', fontWeight: 'bold' }}>Stop Quiz Session?</h3>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost"
+                onClick={() => {
+                  setShowStopModal(false);
+                  resumeQuiz();
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-body" style={{ padding: 'var(--space-4)' }}>
+              <p style={{ margin: '0 0 var(--space-3) 0', fontSize: 'var(--text-sm)', color: 'var(--color-ink)' }}>
+                You have answered <strong>{answeredTotal}</strong> of <strong>{questions.length}</strong> questions in this session.
+              </p>
+              <div
+                style={{
+                  padding: 'var(--space-3)',
+                  backgroundColor: 'var(--color-bg-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-color)',
+                  marginBottom: 'var(--space-4)',
+                  fontSize: 'var(--text-xs)',
+                  lineHeight: 1.6,
+                }}
+              >
+                <strong>Choose your preferred exit action:</strong>
+                <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                  <li><strong>Grade &amp; View Results:</strong> Scores your answered questions, stores the session in your analytics history, and opens the diagnostic report.</li>
+                  <li><strong>Discard &amp; Exit:</strong> Leaves immediately without saving or scoring this incomplete attempt.</li>
+                </ul>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setShowStopModal(false);
+                  resumeQuiz();
+                }}
+              >
+                Resume Quiz
+              </button>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ borderColor: '#ef4444', color: '#ef4444' }}
+                  onClick={() => {
+                    setShowStopModal(false);
+                    resetQuiz();
+                    navigate('/practice');
+                  }}
+                  title="Discard this session without saving"
+                >
+                  Discard &amp; Exit
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm font-bold"
+                  onClick={async () => {
+                    setShowStopModal(false);
+                    await finishQuiz();
+                  }}
+                  title="Grade answered questions and view results"
+                >
+                  Grade &amp; View Results
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Confirm Finish Modal */}
       {showConfirmFinish && (
-        <div className="modal-backdrop" onClick={() => setShowConfirmFinish(false)}>
+        <div className="modal-backdrop" style={{ zIndex: 'var(--z-modal)' }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Finish Quiz?</h3>

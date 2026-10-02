@@ -235,9 +235,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         padding: '16px',
         boxSizing: 'border-box',
       }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div
         className="card"

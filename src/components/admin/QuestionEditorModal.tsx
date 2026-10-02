@@ -77,10 +77,9 @@ export const QuestionEditorModal: React.FC<QuestionEditorModalProps> = ({
   };
 
   return (
-    <div className="reader-modal-overlay animate-fade-in" onClick={onClose}>
+    <div className="reader-modal-overlay animate-fade-in">
       <div
         className="reader-modal-dialog"
-        onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: '840px', maxHeight: '90vh' }}
       >
         {/* Header */}

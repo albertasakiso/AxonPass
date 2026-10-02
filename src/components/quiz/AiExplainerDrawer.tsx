@@ -163,7 +163,7 @@ export default function AiExplainerDrawer({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 'var(--z-modal)' }}>
+    <div className="modal-backdrop" style={{ zIndex: 'var(--z-modal)' }}>
       <div
         className="modal"
         onClick={(e) => e.stopPropagation()}
@@ -360,12 +360,22 @@ export default function AiExplainerDrawer({
                           </span>
                         </div>
 
-                        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)', margin: '0 0 var(--space-1) 0', lineHeight: 1.5 }}>
-                          <strong>Why:</strong> {opt.reasoning}
+                        <p style={{ fontSize: 'var(--text-xs)', color: isCorrect ? 'var(--color-ink)' : 'var(--color-ink-muted)', margin: '0 0 var(--space-2) 0', lineHeight: 1.6 }}>
+                          <strong style={{ color: isCorrect ? 'var(--color-success)' : 'var(--color-ink)' }}>
+                            {isCorrect ? '✓ Authoritative Core Reason:' : '✗ Why Suboptimal / Flawed:'}
+                          </strong>{' '}
+                          {opt.reasoning}
                         </p>
 
-                        <div style={{ fontSize: '11px', color: isCorrect ? 'var(--color-success)' : 'var(--color-ink-subtle)', fontStyle: 'italic' }}>
-                          {opt.flawOrAdvantage}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', fontSize: '11px' }}>
+                          <span style={{ color: isCorrect ? 'var(--color-success)' : 'var(--color-warning)', fontWeight: '600' }}>
+                            {opt.flawOrAdvantage}
+                          </span>
+                          {opt.sourceCitation && (
+                            <span className="badge badge-secondary font-mono" style={{ fontSize: '10px' }}>
+                              📖 {opt.sourceCitation}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -641,12 +651,30 @@ export default function AiExplainerDrawer({
                     }}
                   >
                     <strong>Connection Alert:</strong> {streamError}
-                    <div style={{ marginTop: 'var(--space-2)', fontSize: '11px', color: 'var(--color-ink)' }}>
-                      Quick Fix: Check that Ollama is running and has CORS enabled:
-                      <pre style={{ margin: '4px 0', padding: '4px', backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: '4px' }}>
-                        set OLLAMA_ORIGINS=&quot;*&quot; &amp;&amp; ollama serve
-                      </pre>
-                    </div>
+                    {streamError.toLowerCase().includes('out of memory') || streamError.toLowerCase().includes('cuda error') ? (
+                      <div style={{ marginTop: 'var(--space-2)', fontSize: '11px', color: 'var(--color-ink)', lineHeight: 1.5 }}>
+                        <strong>💡 Local GPU Out of Memory:</strong> Your local graphics card ran out of VRAM attempting to load <code>{ollamaSettings.model}</code>.
+                        <div style={{ margin: '6px 0 0 0', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div>• Select a lighter model from the dropdown above (e.g. <code>qwen2.5:3b</code>, <code>llama3.2:3b</code>, or <code>phi3:mini</code>).</div>
+                          <div>• Or run Ollama in CPU mode: <code>set OLLAMA_NUM_GPU=0 && ollama serve</code></div>
+                          <button
+                            type="button"
+                            onClick={() => setActiveEngine('edge')}
+                            className="btn btn-xs btn-primary font-bold mt-2"
+                            style={{ alignSelf: 'flex-start' }}
+                          >
+                            ⚡ Switch to Edge Cognitive Matrix (0ms • Zero VRAM • 100% Offline)
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 'var(--space-2)', fontSize: '11px', color: 'var(--color-ink)' }}>
+                        Quick Fix: Check that Ollama is running and has CORS enabled:
+                        <pre style={{ margin: '4px 0', padding: '4px', backgroundColor: 'rgba(0,0,0,0.06)', borderRadius: '4px' }}>
+                          set OLLAMA_ORIGINS=&quot;*&quot; &amp;&amp; ollama serve
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 )}
 
