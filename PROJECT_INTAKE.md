@@ -86,6 +86,10 @@ Lead Enterprise Architect & Principal CISO Consultant, SectorFusion Labs
 
 ### 21. Image Suggestions
 - **Hero Image (1920 × 1080):** High-resolution desktop mockup displaying the AxonPass Dark Mode Dashboard — featuring the glowing cyan neural shield logo, Composite Readiness Gauge (742/800 Scaled Score), Bayesian Knowledge Tracing domain radar charts, and active 15-track syllabus selector.
+  - *File Path:* `my_documents/images/hero-image-1920x1080.png` (also available as `.jpg`)
 - **Mobile PWA Showcase (1080 × 1920):** Three-phone device carousel showing: (1) Live Pearson VUE proctored exam interface with compressed timer and cognitive explainer drawer; (2) Dual-mode Audio E-Reader with active voice sentence highlighting; (3) Spaced-repetition Leitner 5-box progress drawer.
+  - *File Path:* `my_documents/images/mobile-pwa-showcase-1080x1920.png` (also available as `.jpg`)
 - **Architecture Diagram (1600 × 900):** Clean vector architectural schematic illustrating the offline-first flow: Client Browser (Dexie.js IndexedDB) &harr; 0ms Edge ML Reasoning Engine (BKT, IRT, 8 Cognitive Operators) &harr; Asynchronous Background Sync Queue &harr; Supabase PostgreSQL Cloud Ledger.
+  - *File Path:* `my_documents/images/architecture-diagram-1600x900.png` (also available as `.jpg`)
 - **Social Sharing Banner (1200 × 675):** The official AxonPass Open Graph card (`public/og-image.png`) showing the holographic neural crest badge, metric cards, and "Edge Cognitive Intelligence" title.
+  - *File Path:* `my_documents/images/social-sharing-banner-1200x675.png` (also available as `.jpg` and `public/og-image.png`)
