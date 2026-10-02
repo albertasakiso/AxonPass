@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuizStore } from '../stores/quizStore';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
-import { calculateTimeLimit } from '../lib/timer';
+import { calculateTimeLimit, getOfficialExamProfile } from '../lib/timer';
 import { db } from '../lib/db';
 import { launchDiagnosticExam } from '../lib/scoring/readinessGauge';
 import type { Certification, Domain, Topic, Question } from '../types';
@@ -98,9 +98,10 @@ export default function PracticePage() {
         sessionQuestionCount: 10,
       });
     } else if (mode === 'exam_sim') {
-      qCount = Math.min(cert.total_exam_questions || 150, 150);
+      const profile = getOfficialExamProfile(cert.slug || cert.code || 'cisa');
+      qCount = profile.totalQuestions;
       feedbackPolicy = 'delayed';
-      durationSeconds = (cert.exam_duration_minutes || 240) * 60;
+      durationSeconds = profile.durationMinutes * 60;
     } else if (mode === 'leitner_drill') {
       qCount = 15;
       durationSeconds = 900;
@@ -256,6 +257,7 @@ export default function PracticePage() {
   };
 
   const currentCert = certifications.find(c => c.slug === selectedCertSlug);
+  const officialProfile = getOfficialExamProfile(selectedCertSlug);
 
   return (
     <div style={{ paddingBottom: 'var(--space-12)' }}>
@@ -396,24 +398,29 @@ export default function PracticePage() {
           </button>
         </div>
 
-        {/* Card 3: Full 150Q Exam Simulation */}
+        {/* Card 3: Full Protracted Official Exam Simulation */}
         <div className="practice-mode-card">
           <div>
             <div className="practice-icon-box" style={{ backgroundColor: 'var(--color-primary-100)', borderColor: 'var(--color-primary-200)' }}>
               🎯
             </div>
-            <h3 className="practice-card-title">Full 150Q Exam Simulation</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <span className="badge badge-primary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Protracted Endurance
+              </span>
+            </div>
+            <h3 className="practice-card-title">Full {officialProfile.totalQuestions}Q Protracted Simulation</h3>
             <p className="practice-card-desc">
-              Complete 150-question mock exam timed at 240 minutes under strict exam conditions (delayed feedback, scaled 200–800 scoring).
+              Complete {officialProfile.totalQuestions}-question proctored simulation timed at {officialProfile.durationMinutes} minutes under Pearson VUE conditions with delayed scoring, optional midpoint break, and cognitive fatigue analysis.
             </p>
           </div>
           <button
             disabled={isLaunching}
             onClick={() => handleLaunchPractice('exam_sim')}
             className="btn btn-primary"
-            style={{ width: '100%', backgroundColor: 'var(--color-primary-hover)' }}
+            style={{ width: '100%', backgroundColor: 'var(--color-primary-hover)', marginTop: 'var(--space-3)' }}
           >
-            Launch Exam Simulator ➔
+            Launch Protracted Exam ➔
           </button>
         </div>
 

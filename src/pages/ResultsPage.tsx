@@ -5,10 +5,10 @@
    and question-by-question review with full rationales.
    =================================================================== */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuizStore } from '../stores/quizStore';
-import { formatDuration } from '../lib/timer';
+import { formatDuration, analyzeCognitiveFatigue } from '../lib/timer';
 import { supabase } from '../lib/supabase';
 import AiExplainerDrawer from '../components/quiz/AiExplainerDrawer';
 import type { Question } from '../types';
@@ -20,6 +20,10 @@ export default function ResultsPage() {
   const [reviewFilter, setReviewFilter] = useState<'all' | 'incorrect' | 'flagged'>('all');
   const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
   const [activeExplainerQuestion, setActiveExplainerQuestion] = useState<Question | null>(null);
+
+  const fatigueAnalysis = useMemo(() => {
+    return analyzeCognitiveFatigue(questions, answers);
+  }, [questions, answers]);
 
   if (!result) {
     return (
@@ -273,6 +277,98 @@ export default function ResultsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Protracted Exam Cognitive Stamina & Fatigue Analysis */}
+      {fatigueAnalysis && (
+        <div className="card mb-6" style={{ borderRadius: 'var(--radius-xl)' }}>
+          <div className="card-header flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+            <div>
+              <span style={{ fontWeight: 'bold', fontSize: 'var(--text-base)' }}>
+                🏃 Cognitive Stamina &amp; Fatigue Analysis
+              </span>
+              <p className="text-muted" style={{ fontSize: 'var(--text-xs)', margin: '2px 0 0 0' }}>
+                Psychometric progression tracking focus and accuracy across 4 quartiles of this session.
+              </p>
+            </div>
+            <span
+              className={`badge ${
+                fatigueAnalysis.fatigueLevel === 'EXCELLENT_STAMINA'
+                  ? 'badge-success'
+                  : fatigueAnalysis.fatigueLevel === 'STEADY_PACING'
+                  ? 'badge-primary'
+                  : fatigueAnalysis.fatigueLevel === 'MILD_FATIGUE'
+                  ? 'badge-warning'
+                  : 'badge-error'
+              }`}
+              style={{ fontWeight: 'bold' }}
+            >
+              ● {fatigueAnalysis.diagnosis}
+            </span>
+          </div>
+          <div className="card-body">
+            {/* 4-Quartile Progress Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
+              {fatigueAnalysis.quartiles.map((q) => (
+                <div
+                  key={q.quartile}
+                  style={{
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-lg)',
+                    backgroundColor: 'var(--color-bg-subtle)',
+                    border: '1px solid var(--border-color)',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--color-ink-muted)', textTransform: 'uppercase' }}>
+                    {q.label}
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'var(--color-ink-muted)', marginBottom: '4px' }}>
+                    {q.rangeText}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '1.5rem',
+                      fontWeight: 'bold',
+                      color: q.accuracy >= 75 ? 'var(--color-success)' : q.accuracy >= 60 ? 'var(--color-warning)' : 'var(--color-error)',
+                    }}
+                  >
+                    {q.accuracy}%
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)' }}>
+                    {q.correct} / {q.total} correct
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'var(--color-primary)', marginTop: '2px', fontWeight: 'bold' }}>
+                    ⚡ {q.averageTimeSeconds}s / Q
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Recommendation Callout */}
+            <div
+              style={{
+                padding: 'var(--space-3) var(--space-4)',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: 'var(--color-primary-surface)',
+                border: '1px solid var(--color-primary-light)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div style={{ fontSize: '1.5rem' }}>💡</div>
+              <div>
+                <div style={{ fontWeight: 'bold', fontSize: 'var(--text-xs)', color: 'var(--color-primary)' }}>
+                  Protracted Endurance Recommendation
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-ink)', lineHeight: 1.5 }}>
+                  {fatigueAnalysis.recommendation}
+                </div>
+              </div>
             </div>
           </div>
         </div>

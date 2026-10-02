@@ -11,7 +11,7 @@ import QuestionCard from '../components/quiz/QuestionCard';
 import Timer from '../components/quiz/Timer';
 import QuizProgress from '../components/quiz/QuizProgress';
 import ReviewGrid from '../components/quiz/ReviewGrid';
-import { calculateTimeLimit, CISA_PROFILES } from '../lib/timer';
+import { calculateTimeLimit, CISA_PROFILES, formatTimer } from '../lib/timer';
 import { supabase } from '../lib/supabase';
 import type { Question } from '../types';
 
@@ -208,6 +208,38 @@ export default function QuizPage() {
   const [showConfirmFinish, setShowConfirmFinish] = useState(false);
   const [showStopModal, setShowStopModal] = useState(false);
   const [showFormulaDrawer, setShowFormulaDrawer] = useState(false);
+  
+  // Protracted Exam (Endurance Simulation) Scheduled Break support
+  const isProtractedExam = questions.length >= 50 && feedbackPolicy === 'delayed';
+  const midpointIndex = Math.floor(questions.length / 2);
+  const [hasPromptedBreak, setHasPromptedBreak] = useState(false);
+  const [showBreakModal, setShowBreakModal] = useState(false);
+  const [breakTimerSeconds, setBreakTimerSeconds] = useState(600); // 10 minutes
+
+  // Auto-offer scheduled midpoint break at 50% milestone
+  useEffect(() => {
+    if (isProtractedExam && !hasPromptedBreak && currentIndex === midpointIndex && midpointIndex > 0) {
+      setHasPromptedBreak(true);
+      setShowBreakModal(true);
+      setReviewPause(true, 'scheduled_break');
+    }
+  }, [isProtractedExam, hasPromptedBreak, currentIndex, midpointIndex, setReviewPause]);
+
+  // Break countdown timer while break modal is active
+  useEffect(() => {
+    if (!showBreakModal) return;
+    const interval = setInterval(() => {
+      setBreakTimerSeconds((prev) => {
+        if (prev <= 1) {
+          setShowBreakModal(false);
+          setReviewPause(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [showBreakModal, setReviewPause]);
 
   // Navigate to results when completed
   useEffect(() => {
@@ -319,6 +351,26 @@ export default function QuizPage() {
           >
             🧮 Formulas
           </button>
+
+          {isProtractedExam && (
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => {
+                setReviewPause(true, 'scheduled_break');
+                setShowBreakModal(true);
+              }}
+              title="Take Scheduled Midpoint Break"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 'bold',
+              }}
+            >
+              ☕ Break
+            </button>
+          )}
 
           <button
             type="button"
@@ -644,6 +696,62 @@ export default function QuizPage() {
                   Grade &amp; View Results
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Official Scheduled Midpoint Break Modal */}
+      {showBreakModal && (
+        <div className="modal-backdrop" style={{ zIndex: 'var(--z-modal)' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px', textAlign: 'center' }}>
+            <div className="modal-header" style={{ justifyContent: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.5rem' }}>☕</span>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', fontWeight: 'bold' }}>
+                  Official Scheduled Break
+                </h3>
+              </div>
+            </div>
+            <div className="modal-body" style={{ padding: 'var(--space-5)' }}>
+              <div className="badge badge-primary font-bold mb-3" style={{ display: 'inline-flex' }}>
+                Milestone: Question {currentIndex + 1} of {questions.length} ({Math.round(((currentIndex + 1) / questions.length) * 100)}% Complete)
+              </div>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-ink)', lineHeight: 1.6, margin: '0 0 var(--space-4) 0' }}>
+                Real Pearson VUE and Prometric test centers offer an unpenalized 10-minute break. Your exam clock is currently <strong>paused</strong>. Take this moment to stand, hydrate, rest your eyes, and recharge cognitive stamina.
+              </p>
+
+              <div
+                style={{
+                  fontSize: '2.5rem',
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 'bold',
+                  color: 'var(--color-primary)',
+                  padding: 'var(--space-3)',
+                  backgroundColor: 'var(--color-bg-subtle)',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '1px solid var(--border-color)',
+                  marginBottom: 'var(--space-3)',
+                }}
+              >
+                {formatTimer(breakTimerSeconds)}
+              </div>
+              <span style={{ fontSize: '11px', color: 'var(--color-ink-muted)' }}>
+                Break time remaining. Exam will automatically resume when timer hits 0:00.
+              </span>
+            </div>
+            <div className="modal-footer" style={{ justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-lg font-bold"
+                onClick={() => {
+                  setShowBreakModal(false);
+                  setReviewPause(false);
+                }}
+                style={{ minWidth: '200px' }}
+              >
+                Resume Exam Now ➔
+              </button>
             </div>
           </div>
         </div>

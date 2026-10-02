@@ -8,7 +8,7 @@ import { LessonViewer } from '../components/learn/LessonViewer';
 import { GlossaryDrawer } from '../components/learn/GlossaryDrawer';
 import { DocumentReader } from '../components/learn/DocumentReader';
 import { InteractiveCalculators } from '../components/learn/InteractiveCalculators';
-import { CisaVersionDeltaViewer } from '../components/learn/CisaVersionDeltaViewer';
+import { CertVersionDeltaViewer } from '../components/learn/CertVersionDeltaViewer';
 import { TaskStatementsDrawer } from '../components/learn/TaskStatementsDrawer';
 import { ConceptGraphExplorer } from '../components/learn/ConceptGraphExplorer';
 import type { Certification, Domain, Topic, Subtopic, Question, GlossaryTerm, StudyMaterial, TaskStatement, DocumentIngestionRecord } from '../types';
@@ -557,16 +557,14 @@ export default function LearnPage() {
             <span>🧠</span> Knowledge Graph
           </button>
 
-          {effectiveCertSlug === 'cisa' && (
-            <button
-              onClick={() => setViewMode('delta')}
-              className={`segmented-pill ${viewMode === 'delta' ? 'active' : ''}`}
-              role="tab"
-              aria-selected={viewMode === 'delta'}
-            >
-              <span>✨</span> 28th Delta Gap
-            </button>
-          )}
+          <button
+            onClick={() => setViewMode('delta')}
+            className={`segmented-pill ${viewMode === 'delta' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={viewMode === 'delta'}
+          >
+            <span>✨</span> Blueprint Delta Gap
+          </button>
 
           <button
             onClick={() => setViewMode('calculators')}
@@ -595,10 +593,19 @@ export default function LearnPage() {
         </div>
       ) : viewMode === 'graph' ? (
         /* View: AI Knowledge Graph & Concept Ontology Explorer */
-        <ConceptGraphExplorer onStartTopicQuiz={handleStartTopicCodeQuiz} />
+        <ConceptGraphExplorer
+          certSlug={effectiveCertSlug}
+          certCode={currentCert?.code || undefined}
+          certName={currentCert?.name}
+          onStartTopicQuiz={handleStartTopicCodeQuiz}
+        />
       ) : viewMode === 'delta' ? (
-        /* View 4: CISA Version 28 vs 27 Gap & Delta Analysis */
-        <CisaVersionDeltaViewer onStartDeltaQuiz={handleStartDeltaQuiz} />
+        /* View 4: Version Blueprint Gap & Delta Analysis across all certifications */
+        <CertVersionDeltaViewer
+          certSlug={effectiveCertSlug}
+          certCode={currentCert?.code || undefined}
+          onStartDeltaQuiz={handleStartDeltaQuiz}
+        />
       ) : viewMode === 'documents' ? (
         /* View 1: Full Document E-Reader & Audio Player */
         <DocumentReader

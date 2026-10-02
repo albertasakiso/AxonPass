@@ -139,3 +139,163 @@ export const CISA_PROFILES = {
     sessionQuestionCount: count,
   }),
 };
+
+export interface OfficialExamProfile {
+  certCode: string;
+  totalQuestions: number;
+  durationMinutes: number;
+  passingScorePercent: number;
+  scheduledBreakQuestionIndex: number;
+  breakDurationMinutes: number;
+}
+
+export const OFFICIAL_EXAM_PROFILES: Record<string, OfficialExamProfile> = {
+  'cisa': { certCode: 'CISA', totalQuestions: 150, durationMinutes: 240, passingScorePercent: 75, scheduledBreakQuestionIndex: 75, breakDurationMinutes: 10 },
+  'cism': { certCode: 'CISM', totalQuestions: 150, durationMinutes: 240, passingScorePercent: 75, scheduledBreakQuestionIndex: 75, breakDurationMinutes: 10 },
+  'cissp': { certCode: 'CISSP', totalQuestions: 125, durationMinutes: 180, passingScorePercent: 70, scheduledBreakQuestionIndex: 62, breakDurationMinutes: 10 },
+  'ccsp': { certCode: 'CCSP', totalQuestions: 125, durationMinutes: 180, passingScorePercent: 70, scheduledBreakQuestionIndex: 62, breakDurationMinutes: 10 },
+  'isc2-cc': { certCode: 'CC', totalQuestions: 100, durationMinutes: 120, passingScorePercent: 70, scheduledBreakQuestionIndex: 50, breakDurationMinutes: 10 },
+  'crisc': { certCode: 'CRISC', totalQuestions: 150, durationMinutes: 240, passingScorePercent: 75, scheduledBreakQuestionIndex: 75, breakDurationMinutes: 10 },
+  'cgeit': { certCode: 'CGEIT', totalQuestions: 150, durationMinutes: 240, passingScorePercent: 75, scheduledBreakQuestionIndex: 75, breakDurationMinutes: 10 },
+  'comptia-sec-plus': { certCode: 'SECURITY+', totalQuestions: 90, durationMinutes: 90, passingScorePercent: 83, scheduledBreakQuestionIndex: 45, breakDurationMinutes: 5 },
+  'cysa': { certCode: 'CYSA+', totalQuestions: 90, durationMinutes: 90, passingScorePercent: 83, scheduledBreakQuestionIndex: 45, breakDurationMinutes: 5 },
+  'comptia-network-plus': { certCode: 'NETWORK+', totalQuestions: 90, durationMinutes: 90, passingScorePercent: 80, scheduledBreakQuestionIndex: 45, breakDurationMinutes: 5 },
+  'comptia-a-plus': { certCode: 'A+', totalQuestions: 90, durationMinutes: 90, passingScorePercent: 75, scheduledBreakQuestionIndex: 45, breakDurationMinutes: 5 },
+  'aws-csaa': { certCode: 'SAA-C03', totalQuestions: 65, durationMinutes: 130, passingScorePercent: 72, scheduledBreakQuestionIndex: 32, breakDurationMinutes: 10 },
+  'gslc': { certCode: 'GSLC', totalQuestions: 115, durationMinutes: 180, passingScorePercent: 70, scheduledBreakQuestionIndex: 57, breakDurationMinutes: 10 },
+  'nist-grc': { certCode: 'NIST', totalQuestions: 100, durationMinutes: 120, passingScorePercent: 75, scheduledBreakQuestionIndex: 50, breakDurationMinutes: 10 },
+  'fifa-agent': { certCode: 'FIFA-AGENT', totalQuestions: 50, durationMinutes: 60, passingScorePercent: 75, scheduledBreakQuestionIndex: 25, breakDurationMinutes: 5 },
+};
+
+export function getOfficialExamProfile(certSlugOrCode: string): OfficialExamProfile {
+  const clean = (certSlugOrCode || '').toLowerCase().trim();
+  const aliasMap: Record<string, string> = {
+    'cisa': 'cisa',
+    'cc': 'isc2-cc',
+    'isc2-cc': 'isc2-cc',
+    'cissp': 'cissp',
+    'cism': 'cism',
+    'crisc': 'crisc',
+    'ccsp': 'ccsp',
+    'cgeit': 'cgeit',
+    'cysa': 'cysa',
+    'cysa+': 'cysa',
+    'comptia-a-plus': 'comptia-a-plus',
+    'a+': 'comptia-a-plus',
+    'aplus': 'comptia-a-plus',
+    'comptia-network-plus': 'comptia-network-plus',
+    'network+': 'comptia-network-plus',
+    'comptia-sec-plus': 'comptia-sec-plus',
+    'security+': 'comptia-sec-plus',
+    'aws-csaa': 'aws-csaa',
+    'saa-c03': 'aws-csaa',
+    'nist-grc': 'nist-grc',
+    'nist': 'nist-grc',
+    'gslc': 'gslc',
+    'fifa-agent': 'fifa-agent',
+  };
+
+  const key = aliasMap[clean] || 'cisa';
+  return OFFICIAL_EXAM_PROFILES[key] || OFFICIAL_EXAM_PROFILES['cisa'];
+}
+
+export interface StaminaQuartile {
+  quartile: number;
+  label: string;
+  rangeText: string;
+  total: number;
+  correct: number;
+  accuracy: number;
+  averageTimeSeconds: number;
+}
+
+export interface CognitiveFatigueAnalysis {
+  quartiles: StaminaQuartile[];
+  firstHalfAccuracy: number;
+  secondHalfAccuracy: number;
+  fatigueDelta: number;
+  fatigueLevel: 'EXCELLENT_STAMINA' | 'STEADY_PACING' | 'MILD_FATIGUE' | 'SEVERE_FATIGUE';
+  diagnosis: string;
+  recommendation: string;
+}
+
+export function analyzeCognitiveFatigue(
+  questions: any[],
+  answers: Record<string, any>
+): CognitiveFatigueAnalysis | null {
+  if (questions.length < 12) return null;
+
+  const qSize = Math.ceil(questions.length / 4);
+  const quartiles: StaminaQuartile[] = [];
+
+  for (let q = 0; q < 4; q++) {
+    const start = q * qSize;
+    const end = Math.min((q + 1) * qSize, questions.length);
+    const slice = questions.slice(start, end);
+    if (slice.length === 0) continue;
+
+    let correct = 0;
+    let totalTime = 0;
+    slice.forEach((item) => {
+      const a = answers[item.id];
+      if (a && a.is_correct) correct++;
+      if (a && a.time_taken_seconds) totalTime += a.time_taken_seconds;
+    });
+
+    const accuracy = Math.round((correct / slice.length) * 100);
+    const avgTime = Math.round(totalTime / slice.length);
+
+    quartiles.push({
+      quartile: q + 1,
+      label: `Quartile ${q + 1} (${q * 25 + 1}%–${(q + 1) * 25}%)`,
+      rangeText: `Questions ${start + 1}–${end}`,
+      total: slice.length,
+      correct,
+      accuracy,
+      averageTimeSeconds: avgTime || 0,
+    });
+  }
+
+  const firstHalfTotal = (quartiles[0]?.total || 0) + (quartiles[1]?.total || 0);
+  const firstHalfCorrect = (quartiles[0]?.correct || 0) + (quartiles[1]?.correct || 0);
+  const firstHalfAccuracy = firstHalfTotal > 0 ? Math.round((firstHalfCorrect / firstHalfTotal) * 100) : 0;
+
+  const secondHalfTotal = (quartiles[2]?.total || 0) + (quartiles[3]?.total || 0);
+  const secondHalfCorrect = (quartiles[2]?.correct || 0) + (quartiles[3]?.correct || 0);
+  const secondHalfAccuracy = secondHalfTotal > 0 ? Math.round((secondHalfCorrect / secondHalfTotal) * 100) : 0;
+
+  const fatigueDelta = secondHalfAccuracy - firstHalfAccuracy;
+
+  let fatigueLevel: CognitiveFatigueAnalysis['fatigueLevel'] = 'STEADY_PACING';
+  let diagnosis = '';
+  let recommendation = '';
+
+  if (fatigueDelta >= 4) {
+    fatigueLevel = 'EXCELLENT_STAMINA';
+    diagnosis = `Endurance Surge (+${fatigueDelta}% in final half).`;
+    recommendation = 'You accelerate focus under protracted testing conditions. Pacing and mental endurance are in the 95th percentile.';
+  } else if (fatigueDelta >= -5) {
+    fatigueLevel = 'STEADY_PACING';
+    diagnosis = `Steady Stamina (${fatigueDelta >= 0 ? '+' : ''}${fatigueDelta}% variance).`;
+    recommendation = 'Consistent cognitive stamina maintained across all quartiles. Maintain this pacing rhythm during your official exam.';
+  } else if (fatigueDelta >= -15) {
+    fatigueLevel = 'MILD_FATIGUE';
+    diagnosis = `Mild Mental Fatigue (${fatigueDelta}% drop in final stretch).`;
+    recommendation = 'Accuracy began declining in the final quartile due to cognitive drain. Take full advantage of scheduled midpoint breaks.';
+  } else {
+    fatigueLevel = 'SEVERE_FATIGUE';
+    diagnosis = `Late-Exam Cognitive Exhaustion (${fatigueDelta}% drop in final stretch).`;
+    recommendation = 'Critical focus depletion after question 50. Prioritize 50Q–100Q protracted endurance simulations to condition psychological stamina before exam day.';
+  }
+
+  return {
+    quartiles,
+    firstHalfAccuracy,
+    secondHalfAccuracy,
+    fatigueDelta,
+    fatigueLevel,
+    diagnosis,
+    recommendation,
+  };
+}
+
