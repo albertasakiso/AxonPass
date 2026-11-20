@@ -1,179 +1,371 @@
 #!/usr/bin/env python3
 """
 ===================================================================
-APILIGU LEARNING PASS — Master Local AI/ML Pipeline
-100% Free, Open-Source Automated Ingestion, Training, Test Set Verification,
-and Live Supabase (pgvector & Storage) Synchronization
+ANOXPASS — Master Self-Hosted Open-Weights AI/ML Pipeline & Local Bridge
+100% Free, Open-Source, Zero Paid APIs:
+  - Local RAG over `my_documents/` (sentence-transformers + FAISS/NumPy)
+  - 4-Mode Local AI Coach via Ollama (deepseek-r1:8b / llama3.1:8b / qwen2.5:7b / mistral:7b)
+  - Open-Weights LoRA/QLoRA Fine-Tuning Dataset & Adapter Pipeline
+  - Adaptive FSRS v4.5 Spaced Repetition & Difficulty-Ranked Path Recommender
+  - Optional Local HTTP Bridge (`--serve`) for the AnoxPass React Frontend
 ===================================================================
 Usage:
-    python local_ai_pipeline.py               # Runs complete end-to-end pipeline
-    python local_ai_pipeline.py --ingest      # Ingests documents only
-    python local_ai_pipeline.py --train       # Trains local vector embeddings
-    python local_ai_pipeline.py --verify      # Verifies against test set
-    python local_ai_pipeline.py --sync-db     # Pushes vectors to Supabase
-    python local_ai_pipeline.py --sync-storage # Syncs documents to Supabase Storage
+    python local_ai_pipeline.py --serve             # Start local HTTP bridge on :8765
+    python local_ai_pipeline.py --ingest            # Index my_documents/ into local RAG
+    python local_ai_pipeline.py --finetune-export   # Export LoRA SFT dataset JSONL
+    python local_ai_pipeline.py --coach "Your prompt" --mode leadership_mentor
+    python local_ai_pipeline.py --recommend-paths   # Show adaptive path recommendations
 ===================================================================
 """
 
 import os
 import sys
-import time
+import json
 import argparse
-from collections import defaultdict
+import urllib.request
+import urllib.error
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from typing import Dict, Any, List, Optional
 
-# Ensure UTF-8 output on Windows
-if sys.platform == 'win32':
+if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-DOCS_DIR = os.path.join(ROOT_DIR, 'my_documents')
-ML_DIR = os.path.join(ROOT_DIR, 'ml_engine')
-NPZ_PATH = os.path.join(ML_DIR, 'vector_store.npz')
-META_PATH = os.path.join(ML_DIR, 'chunks_metadata.json')
+DOCS_DIR = os.path.join(ROOT_DIR, "my_documents")
+DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+DEFAULT_OLLAMA_MODEL = os.environ.get("ANOXPASS_OLLAMA_MODEL", "anoxpass-coach")
 
-from ml_engine.document_parser import UniversalDocumentParser
-from ml_engine.vector_engine import LocalVectorEngine
-from ml_engine.model_verifier import ModelVerifier, get_verified_test_questions
-from ml_engine.supabase_sync import SupabaseLiveSync, get_env_credentials
+from ml_engine.rag_engine import LocalRAGEngine
+from ml_engine.coaching_modes import (
+    COACH_MODES,
+    build_coach_prompt,
+    deterministic_offline_coach,
+    analyze_speech_metrics,
+)
+from ml_engine.adaptive_fsrs import (
+    FSRSCardState,
+    schedule_fsrs_card,
+    predict_exam_readiness,
+    recommend_next_paths,
+)
+from ml_engine.lora_trainer import build_sft_dataset, run_lora_finetune
+from ml_engine.storage_optimizer import (
+    optimize_local_storage,
+    export_compact_cloud_pack,
+    get_storage_stats,
+)
+from ml_engine.batch_synthesizer import (
+    run_batch_synthesis,
+    get_synthesis_status,
+    sync_synthesized_to_supabase,
+)
 
 
-def run_document_ingestion(docs_dir: str, max_files: int = 0) -> list:
-    """Ingests 100% of documents in my_documents/ directory."""
-    print("\n" + "=" * 65)
-    print(" STEP 1: INGESTING & CHUNKING ALL LOCAL DOCUMENTS (100% COVERAGE)")
-    print("=" * 65)
-    print(f"Target Directory: {docs_dir}")
+def query_local_ollama(
+    prompt: str,
+    system_prompt: str,
+    model: str = DEFAULT_OLLAMA_MODEL,
+    ollama_url: str = DEFAULT_OLLAMA_URL,
+    timeout: int = 45,
+) -> Optional[str]:
+    """Calls local self-hosted Ollama HTTP API (zero paid cloud calls)."""
+    url = f"{ollama_url.rstrip('/')}/api/generate"
+    payload = json.dumps({
+        "model": model,
+        "system": system_prompt,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.25, "num_ctx": 8192},
+    }).encode("utf-8")
 
-    parser = UniversalDocumentParser(chunk_size=700, chunk_overlap=120)
-    all_chunks = []
-    file_counts = defaultdict(int)
-    cert_counts = defaultdict(int)
-    total_files_scanned = 0
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("response")
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        return None
 
-    for root, dirs, files in os.walk(docs_dir):
-        for f in files:
-            ext = os.path.splitext(f)[1].lower()
-            if ext in ('.pdf', '.docx', '.doc', '.epub', '.md', '.txt', '.text'):
-                full_path = os.path.join(root, f)
-                total_files_scanned += 1
-                
-                try:
-                    file_chunks = parser.process_file(full_path, docs_dir)
-                    if file_chunks:
-                        all_chunks.extend(file_chunks)
-                        file_counts[ext] += 1
-                        cert = file_chunks[0]["certification_code"]
-                        cert_counts[cert] += len(file_chunks)
-                        
-                        if total_files_scanned % 20 == 0:
-                            print(f"  -> Ingested {total_files_scanned} files | Generated {len(all_chunks)} semantic chunks so far...")
-                except Exception as parse_err:
-                    print(f"  [WARN] Skipping file {f} due to error: {parse_err}")
-                
-                if max_files > 0 and total_files_scanned >= max_files:
-                    break
-        if max_files > 0 and total_files_scanned >= max_files:
-            break
 
-    print(f"\n[INGEST-SUMMARY] Total Files Processed: {total_files_scanned}")
-    print(f"[INGEST-SUMMARY] Total Semantic Chunks Extracted: {len(all_chunks)}")
-    print("File types digested:")
-    for ext, cnt in sorted(file_counts.items(), key=lambda x: x[1], reverse=True):
-        print(f"  {ext}: {cnt} files")
-    print("Chunks by certification domain:")
-    for cert, cnt in sorted(cert_counts.items(), key=lambda x: x[1], reverse=True):
-        print(f"  {cert}: {cnt} chunks")
+def run_local_coach(
+    rag_engine: LocalRAGEngine,
+    mode: str,
+    message: str,
+    domain: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    model: str = DEFAULT_OLLAMA_MODEL,
+) -> Dict[str, Any]:
+    """Executes RAG retrieval + local Ollama open-weights generation with offline fallback."""
+    rag_hits = rag_engine.retrieve(message, top_k=4, filter_domain=domain)
+    built = build_coach_prompt(mode=mode, user_message=message, rag_context=rag_hits, metadata=metadata)
 
-    return all_chunks
+    ollama_text = query_local_ollama(
+        prompt=built["prompt"],
+        system_prompt=built["system"],
+        model=model,
+    )
+
+    if ollama_text:
+        result: Dict[str, Any] = {
+            "mode": built["mode"],
+            "engine": f"ollama:{model}",
+            "response": ollama_text,
+            "sources": [
+                {
+                    "document_name": h.get("document_name"),
+                    "certification_code": h.get("certification_code"),
+                    "similarity_score": h.get("similarity_score"),
+                }
+                for h in rag_hits
+            ],
+        }
+        if built["mode"] == "speech_coach":
+            dur = (metadata or {}).get("duration_seconds")
+            result["metrics"] = analyze_speech_metrics(message, float(dur) if dur else None)
+        return result
+
+    fallback = deterministic_offline_coach(
+        mode=built["mode"],
+        user_message=message,
+        rag_context=rag_hits,
+        metadata=metadata,
+    )
+    fallback["sources"] = [
+        {
+            "document_name": h.get("document_name"),
+            "certification_code": h.get("certification_code"),
+            "similarity_score": h.get("similarity_score"),
+        }
+        for h in rag_hits
+    ]
+    return fallback
+
+
+def start_local_http_bridge(host: str = "127.0.0.1", port: int = 8765):
+    """Starts a zero-dependency local HTTP JSON bridge for the AnoxPass web frontend."""
+    rag_engine = LocalRAGEngine()
+    rag_engine.load()
+
+    class AnoxPassHandler(BaseHTTPRequestHandler):
+        def _send_json(self, payload: Dict[str, Any], status: int = 200):
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self):
+            self._send_json({"ok": True})
+
+        def do_GET(self):
+            if self.path == "/health":
+                self._send_json({
+                    "status": "ok",
+                    "engine": "anoxpass-local-open-weights",
+                    "ollama_url": DEFAULT_OLLAMA_URL,
+                    "default_model": DEFAULT_OLLAMA_MODEL,
+                    "modes": list(COACH_MODES.keys()),
+                    "rag": rag_engine.get_stats(),
+                })
+                return
+            if self.path == "/storage/stats":
+                self._send_json(get_storage_stats())
+                return
+            if self.path == "/synthesis/status":
+                self._send_json(get_synthesis_status())
+                return
+            self._send_json({"error": "Not found"}, status=404)
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+            try:
+                body = json.loads(raw)
+            except json.JSONDecodeError:
+                self._send_json({"error": "Invalid JSON"}, status=400)
+                return
+
+            if self.path == "/coach":
+                res = run_local_coach(
+                    rag_engine=rag_engine,
+                    mode=body.get("mode", "exam_proctor"),
+                    message=body.get("message", ""),
+                    domain=body.get("domain"),
+                    metadata=body.get("metadata"),
+                    model=body.get("model", DEFAULT_OLLAMA_MODEL),
+                )
+                self._send_json(res)
+                return
+
+            if self.path == "/course/tutor":
+                cert_code = body.get("cert_code") or body.get("domain")
+                lesson_title = body.get("lesson_title", "Lesson")
+                question = body.get("question") or body.get("message", "")
+                tutor_prompt = (
+                    f"Lesson: {lesson_title} ({cert_code or 'Certification'})\n"
+                    f"Learner Question / Drill: {question}"
+                )
+                res = run_local_coach(
+                    rag_engine=rag_engine,
+                    mode="exam_proctor",
+                    message=tutor_prompt,
+                    domain=cert_code,
+                    metadata={
+                        "lesson_title": lesson_title,
+                        "cert_code": cert_code,
+                        "drill_title": body.get("drill_title"),
+                    },
+                    model=body.get("model", DEFAULT_OLLAMA_MODEL),
+                )
+                self._send_json(res)
+                return
+
+            if self.path == "/rag/search":
+                hits = rag_engine.retrieve(
+                    query=body.get("query", ""),
+                    top_k=int(body.get("top_k", 5)),
+                    filter_domain=body.get("domain"),
+                )
+                self._send_json({"results": hits})
+                return
+
+            if self.path == "/fsrs/schedule":
+                card_data = body.get("card", {})
+                card = FSRSCardState(
+                    card_id=card_data.get("card_id", "card-1"),
+                    stability=float(card_data.get("stability", 0.0)),
+                    difficulty=float(card_data.get("difficulty", 5.0)),
+                    reps=int(card_data.get("reps", 0)),
+                    lapses=int(card_data.get("lapses", 0)),
+                    state=card_data.get("state", "new"),
+                    last_review=card_data.get("last_review"),
+                    due=card_data.get("due"),
+                )
+                res = schedule_fsrs_card(card, int(body.get("rating", 3)))
+                self._send_json(res)
+                return
+
+            if self.path == "/paths/recommend":
+                recs = recommend_next_paths(
+                    completed_certs=body.get("completed_certs", []),
+                    mastery_by_cert=body.get("mastery_by_cert", {}),
+                    top_n=int(body.get("top_n", 3)),
+                )
+                readiness = predict_exam_readiness(
+                    accuracy_rate=float(body.get("accuracy_rate", 0.72)),
+                    avg_stability_days=float(body.get("avg_stability_days", 10.0)),
+                    coverage_ratio=float(body.get("coverage_ratio", 0.5)),
+                    streak_days=int(body.get("streak_days", 0)),
+                )
+                self._send_json({"recommendations": recs, "readiness": readiness})
+                return
+
+            self._send_json({"error": "Unknown endpoint"}, status=404)
+
+    server = HTTPServer((host, port), AnoxPassHandler)
+    print(f"[ANOXPASS-AI] Local Open-Weights Bridge listening on http://{host}:{port}")
+    print(f"[ANOXPASS-AI] Endpoints: GET /health, POST /coach, POST /rag/search, POST /fsrs/schedule, POST /paths/recommend")
+    server.serve_forever()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Apiligu Learning Pass — Master Local AI/ML Pipeline")
-    parser.add_argument("--ingest", action="store_true", help="Ingest documents only")
-    parser.add_argument("--train", action="store_true", help="Train and index vector embeddings only")
-    parser.add_argument("--verify", action="store_true", help="Verify against test set only")
-    parser.add_argument("--sync-db", action="store_true", help="Sync chunks to Supabase Postgres only")
-    parser.add_argument("--sync-storage", action="store_true", help="Sync files to Supabase Storage only")
-    parser.add_argument("--limit-files", type=int, default=0, help="Limit number of documents to parse (0 for all)")
-    parser.add_argument("--test-sample", type=int, default=100, help="Test questions to sample per certification")
+    parser = argparse.ArgumentParser(description="AnoxPass Self-Hosted Open-Weights AI/ML Pipeline")
+    parser.add_argument("--ingest", action="store_true", help="Ingest & index my_documents/ into local RAG")
+    parser.add_argument("--limit-files", type=int, default=0, help="Limit files during ingestion (0 = all)")
+    parser.add_argument("--finetune-export", action="store_true", help="Export LoRA SFT dataset JSONL")
+    parser.add_argument("--finetune", action="store_true", help="Run open-weights LoRA/QLoRA fine-tuning")
+    parser.add_argument("--base-model", default="Qwen/Qwen2.5-7B-Instruct", help="HuggingFace open-weights model")
+    parser.add_argument("--coach", type=str, default=None, help="Run a single local coaching prompt")
+    parser.add_argument("--mode", default="exam_proctor", choices=list(COACH_MODES.keys()), help="Coaching mode")
+    parser.add_argument("--recommend-paths", action="store_true", help="Print adaptive difficulty-ranked path recommendations")
+    parser.add_argument("--optimize-storage", action="store_true", help="Deduplicate & int8-quantize local RAG storage")
+    parser.add_argument("--export-compact-pack", action="store_true", help="Export compact high-signal Supabase knowledge pack")
+    parser.add_argument("--max-mb", type=float, default=25.0, help="Budget cap in MB for compact Supabase pack or synthesis")
+    parser.add_argument("--synthesize-all", action="store_true", help="Run resumable Ollama synthesis for all 16 certifications")
+    parser.add_argument("--synthesize-cert", type=str, default=None, help="Run resumable Ollama synthesis for one cert ID (e.g. cisa)")
+    parser.add_argument("--synthesize-status", action="store_true", help="Show per-cert Ollama synthesis completion table")
+    parser.add_argument("--sync-synthesized", action="store_true", help="Sync completed synthesized lessons & questions to Supabase")
+    parser.add_argument("--sync-supabase", action="store_true", help="Sync to Supabase after synthesis completes")
+    parser.add_argument("--dry-run", action="store_true", help="Plan synthesis clusters & estimate MB without calling Ollama")
+    parser.add_argument("--model", type=str, default=DEFAULT_OLLAMA_MODEL, help="Local Ollama model name")
+    parser.add_argument("--serve", action="store_true", help="Start local HTTP bridge for frontend")
+    parser.add_argument("--port", type=int, default=8765, help="Port for local HTTP bridge")
     args = parser.parse_args()
 
-    run_all = not (args.ingest or args.train or args.verify or args.sync_db or args.sync_storage)
+    rag_engine = LocalRAGEngine()
 
-    print("\n" + "#" * 65)
-    print("  APILIGU LEARNING PASS — AUTOMATED OPEN-SOURCE AI/ML ENGINE")
-    print("  Stack: Python, Hugging Face (all-MiniLM-L6-v2), pgvector, Supabase")
-    print("  Zero Paid APIs | 100% Local Machine Learning & Cloud Sync")
-    print("#" * 65)
+    if args.optimize_storage:
+        print(json.dumps(optimize_local_storage(), indent=2))
+        return
 
-    vector_engine = LocalVectorEngine(model_name="all-MiniLM-L6-v2", batch_size=64)
-    chunks = []
-    embeddings = None
+    if args.export_compact_pack:
+        print(json.dumps(export_compact_cloud_pack(max_mb=args.max_mb), indent=2))
+        return
 
-    # Step 1: Ingestion & Parsing
-    if run_all or args.ingest or args.train:
-        chunks = run_document_ingestion(DOCS_DIR, max_files=args.limit_files)
-        if not chunks:
-            print("[ERROR] No chunks extracted. Check my_documents folder.")
-            return
+    if args.synthesize_status:
+        print(json.dumps(get_synthesis_status(), indent=2))
+        return
 
-    # Step 2: Local Model Training & Embedding
-    if run_all or args.train:
-        print("\n" + "=" * 65)
-        print(" STEP 2: LOCAL EMBEDDING MODEL TRAINING & VECTOR INDEXING")
-        print("=" * 65)
-        embeddings = vector_engine.train_and_index(chunks, show_progress=True)
-        vector_engine.save_index(NPZ_PATH, META_PATH)
-    else:
-        # Load cached index if exists
-        loaded = vector_engine.load_index(NPZ_PATH, META_PATH)
-        if loaded:
-            chunks = vector_engine.chunks_metadata
-            embeddings = vector_engine.embeddings
+    if args.sync_synthesized:
+        print(json.dumps(sync_synthesized_to_supabase(model_name=args.model), indent=2))
+        return
 
-    # Step 3: Test Set Verification & Accuracy Evaluation
-    report = None
-    if run_all or args.verify:
-        print("\n" + "=" * 65)
-        print(" STEP 3: ACCURACY VERIFICATION AGAINST TEST SET (75,000 DB QUESTIONS)")
-        print("=" * 65)
-        creds = get_env_credentials()
-        test_questions = get_verified_test_questions(
-            creds["direct_url"],
-            sample_per_cert=args.test_sample
+    if args.synthesize_all or args.synthesize_cert:
+        target = "all" if args.synthesize_all else args.synthesize_cert
+        budget = args.max_mb if args.max_mb != 25.0 else 40.0
+        res = run_batch_synthesis(
+            cert=target,
+            model=args.model,
+            max_mb=budget,
+            dry_run=args.dry_run,
+            sync_supabase=args.sync_supabase,
         )
-        verifier = ModelVerifier(vector_engine)
-        report = verifier.evaluate_test_set(test_questions, similarity_threshold=0.38)
-        report["total_documents"] = len(set(c["document_name"] for c in vector_engine.chunks_metadata))
-        report["total_chunks"] = len(vector_engine.chunks_metadata)
+        print(json.dumps(res, indent=2))
+        return
 
-    # Step 4: Live Supabase Database & Knowledge Synchronization (Zero-Storage Architecture)
-    if run_all or args.sync_db:
-        print("\n" + "=" * 65)
-        print(" STEP 4: SYNCHRONIZING WITH LIVE SUPABASE (ZERO-STORAGE ARCHITECTURE)")
-        print(" [POLICY] Zero raw binary files uploaded to cloud storage (0 MB bucket usage).")
-        print(" [POLICY] 100% of knowledge distilled into database tables & vector embeddings.")
-        print("=" * 65)
-        sync = SupabaseLiveSync()
+    if args.ingest:
+        summary = rag_engine.ingest_and_index(DOCS_DIR, max_files=args.limit_files)
+        print(json.dumps(summary, indent=2))
+        return
 
-        # Sync Supabase pgvector database table
-        if chunks and embeddings is not None:
-            sync.push_vector_chunks(chunks, embeddings, batch_size=250)
-        
-        if report:
-            sync.log_verification_metrics(report)
+    if args.finetune_export:
+        print(json.dumps(build_sft_dataset(), indent=2))
+        return
 
-        # Test live search RPC function in Supabase
-        sync.test_live_rpc_search("What is the primary role of an information systems auditor?", vector_engine)
+    if args.finetune:
+        build_sft_dataset()
+        print(json.dumps(run_lora_finetune(base_model=args.base_model), indent=2))
+        return
 
-    print("\n" + "#" * 65)
-    print(" [SUCCESS] AI/ML PIPELINE FULLY EXECUTED AND VERIFIED (100% COMPLETE)!")
-    print("#" * 65)
+    if args.recommend_paths:
+        recs = recommend_next_paths(completed_certs=[], mastery_by_cert={"CISA": 62.0})
+        print(json.dumps(recs, indent=2))
+        return
+
+    if args.coach:
+        res = run_local_coach(rag_engine=rag_engine, mode=args.mode, message=args.coach)
+        print(res["response"])
+        return
+
+    if args.serve:
+        start_local_http_bridge(port=args.port)
+        return
+
+    parser.print_help()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

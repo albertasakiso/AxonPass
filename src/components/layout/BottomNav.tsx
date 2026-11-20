@@ -12,7 +12,16 @@ export default function BottomNav() {
   const { reviewDueCount } = useProgressStore();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
-  const visibleNavItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || isAdmin);
+  const extraNavItems = [
+    { id: 'paths', label: 'Paths', path: '/paths', icon: '🗺️' },
+    { id: 'academy', label: 'Academy', path: '/academy', icon: '🎓' },
+    { id: 'books', label: 'Books', path: '/books', icon: '📖' },
+  ];
+  const baseNavItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || isAdmin);
+  const visibleNavItems = [
+    ...baseNavItems.filter((i) => i.id !== 'admin' && i.id !== 'insights'),
+    ...extraNavItems,
+  ];
 
   return (
     <nav className="bottom-nav mobile-only" role="navigation" aria-label="Main navigation">

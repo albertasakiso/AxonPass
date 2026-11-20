@@ -1,0 +1,15 @@
+{
+  "status": "optimized",
+  "elapsed_seconds": 19.73,
+  "raw_chunks": 213423,
+  "kept_unique_chunks": 135517,
+  "duplicates_removed": 77889,
+  "boilerplate_empty_removed": 17,
+  "raw_meta_mb": 248.14,
+  "raw_vectors_mb": 280.18,
+  "raw_total_mb": 528.32,
+  "optimized_meta_mb": 21.68,
+  "optimized_vectors_mb": 45.87,
+  "optimized_total_mb": 67.55,
+  "compression_savings_percent": 87.2
+}

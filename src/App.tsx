@@ -11,9 +11,12 @@ import { pullContentFromServer, pushSyncQueue } from './lib/sync';
 // Lazy-loaded pages for fast initial bundle
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const HomePage = lazy(() => import('./pages/HomePage'));
-const LearnPage = lazy(() => import('./pages/LearnPage'));
+const CoursePlayerPage = lazy(() => import('./pages/CoursePlayerPage'));
 const PracticePage = lazy(() => import('./pages/PracticePage'));
 const InsightsPage = lazy(() => import('./pages/InsightsPage'));
+const PathsPage = lazy(() => import('./pages/PathsPage'));
+const AcademyPage = lazy(() => import('./pages/AcademyPage'));
+const BooksHubPage = lazy(() => import('./pages/BooksHubPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const QuizPage = lazy(() => import('./pages/QuizPage'));
@@ -123,11 +126,15 @@ export default function App() {
             }
           >
             <Route path="/" element={<HomePage />} />
-            <Route path="/learn" element={<LearnPage />} />
+            <Route path="/learn" element={<CoursePlayerPage />} />
+            <Route path="/learn/:certId" element={<CoursePlayerPage />} />
             <Route path="/practice" element={<PracticePage />} />
             <Route path="/quiz" element={<QuizPage />} />
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/insights" element={<InsightsPage />} />
+            <Route path="/paths" element={<PathsPage />} />
+            <Route path="/academy" element={<AcademyPage />} />
+            <Route path="/books" element={<BooksHubPage />} />
             <Route
               path="/admin"
               element={

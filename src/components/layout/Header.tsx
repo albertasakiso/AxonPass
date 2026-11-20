@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { AuthModal } from '../auth/AuthModal';
 import { UserProfileModal } from '../profile/UserProfileModal';
 import { AxonPassLogo } from '../common/AxonPassLogo';
+import { StreakXpBar } from '../academy/StreakXpBar';
 import type { Certification } from '../../types';
 
 interface HeaderProps {
@@ -99,32 +100,12 @@ export default function Header({ title = 'AxonPass' }: HeaderProps) {
           )}
         </div>
 
-        {/* Right: Streak, Sync Badge, Coursera Account Controls & Settings */}
+        {/* Right: Streak, XP, FSRS, Realtime Sync Badge & Account Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          {/* Streak Pill */}
-          <div
-            onClick={() => navigate('/insights')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              color: '#b45309',
-              backgroundColor: '#fef3c7',
-              border: '1px solid #fde68a',
-              padding: '2px 8px',
-              borderRadius: 'var(--radius-full)',
-              cursor: 'pointer',
-            }}
-            title={`${streakDays} Day Study Streak`}
-          >
-            <span>🔥</span>
-            <span>{streakDays}d</span>
-          </div>
+          <StreakXpBar />
 
-          {/* Sync Indicator */}
-          <div className={`sync-indicator ${sync.className}`} style={{ fontSize: '11px', padding: '2px 8px' }}>
+          {/* Legacy Sync Indicator */}
+          <div className={`sync-indicator ${sync.className}`} style={{ fontSize: '11px', padding: '2px 8px' }} title={`Local streak: ${streakDays}d`}>
             <span className={`sync-dot ${sync.dot}`} aria-hidden="true" />
             <span className="desktop-only">{sync.text}</span>
           </div>

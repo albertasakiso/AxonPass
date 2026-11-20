@@ -3,10 +3,16 @@
 .env*.local
 *.env
 supabase/.temp
+supabase/backups/
 
 # Heavy Machine Learning & Vector Store Artifacts (>100MB exceeds GitHub push limits)
 ml_engine/*.npz
+ml_engine/*.npy
 ml_engine/chunks_metadata.json
+ml_engine/chunks_metadata.jsonl.zlib
+ml_engine/compact_knowledge_pack.jsonl.gz
+ml_engine/sft_training_dataset.jsonl
+ml_engine/synthesis_state.db*
 ml_engine/__pycache__/
 *.npz
 

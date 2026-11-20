@@ -10,7 +10,18 @@ import { AxonPassLogo } from '../common/AxonPassLogo';
 export default function SideRail() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
-  const visibleNavItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || isAdmin);
+  const extraNavItems = [
+    { id: 'paths', label: 'Paths', path: '/paths', icon: '🗺️' },
+    { id: 'academy', label: 'Academy', path: '/academy', icon: '🎓' },
+    { id: 'books', label: 'Books', path: '/books', icon: '📖' },
+  ];
+  const baseNavItems = NAV_ITEMS.filter((item) => item.id !== 'admin' || isAdmin);
+  const adminItem = baseNavItems.find((i) => i.id === 'admin');
+  const visibleNavItems = [
+    ...baseNavItems.filter((i) => i.id !== 'admin'),
+    ...extraNavItems,
+    ...(adminItem ? [adminItem] : []),
+  ];
 
   return (
     <aside className="side-rail desktop-only" role="navigation" aria-label="Main navigation">
