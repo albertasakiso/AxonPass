@@ -22,7 +22,7 @@ export interface ParsedSentence {
 }
 
 export interface ParsedBlock {
-  type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'code' | 'divider';
+  type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'code' | 'table' | 'divider';
   headingLevel?: number;
   raw: string;
   sentences: ParsedSentence[];
@@ -41,7 +41,7 @@ export function segmentDocumentForSpeech(markdown: string): {
   const lines = markdown.split(/\r?\n/);
   const blocks: ParsedBlock[] = [];
   let currentBlockLines: string[] = [];
-  let currentType: 'paragraph' | 'list' | 'blockquote' | 'code' = 'paragraph';
+  let currentType: 'paragraph' | 'list' | 'blockquote' | 'code' | 'table' = 'paragraph';
   let inCodeBlock = false;
 
   const flushBlock = () => {
@@ -116,6 +116,16 @@ export function segmentDocumentForSpeech(markdown: string): {
       continue;
     }
 
+    // Markdown Pipe Tables
+    if (trimmed.startsWith('|') && trimmed.includes('|')) {
+      if (currentType !== 'table') {
+        flushBlock();
+        currentType = 'table';
+      }
+      currentBlockLines.push(line);
+      continue;
+    }
+
     // Bullet lists (- , * , + , 1. )
     if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('+ ') || /^\d+\.\s/.test(trimmed)) {
       if (currentType !== 'list') {
@@ -141,7 +151,7 @@ export function segmentDocumentForSpeech(markdown: string): {
   let globalIndex = 0;
 
   for (const block of blocks) {
-    if (block.type === 'divider' || block.type === 'code') {
+    if (block.type === 'divider' || block.type === 'code' || block.type === 'table') {
       continue;
     }
 
@@ -199,19 +209,31 @@ export function segmentDocumentForSpeech(markdown: string): {
 export interface AdobeContentReaderProps {
   contentMarkdown: string;
   chapterTitle?: string;
+  bookTitle?: string;
   fontSize?: 'sm' | 'base' | 'lg' | 'xl';
   onNextChapter?: () => void;
   onPrevChapter?: () => void;
   showAudioControlsInitially?: boolean;
+  initialSentenceIndex?: number;
+  onSentenceProgress?: (index: number) => void;
+  onHighlightSave?: (selectedText: string) => void;
+  onCreateFlashcard?: (selectedText: string) => void;
+  onAskTutor?: (selectedText: string) => void;
 }
 
 export default function AdobeContentReader({
   contentMarkdown,
   chapterTitle,
+  bookTitle,
   fontSize = 'base',
   onNextChapter,
   onPrevChapter,
   showAudioControlsInitially = true,
+  initialSentenceIndex = 0,
+  onSentenceProgress,
+  onHighlightSave,
+  onCreateFlashcard,
+  onAskTutor,
 }: AdobeContentReaderProps) {
   const [playbackState, setPlaybackState] = useState<SpeechPlaybackState>(speechEngine.getState());
   const [voices, setVoices] = useState<SpeechVoiceOption[]>([]);
@@ -220,8 +242,17 @@ export default function AdobeContentReader({
   const [showToolbar, setShowToolbar] = useState(showAudioControlsInitially);
   const [followAlong, setFollowAlong] = useState(true);
   const [autoAdvanceChapter, setAutoAdvanceChapter] = useState(true);
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionFeedback, setSelectionFeedback] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync audio toolbar visibility if parent toggles Read Aloud
+  useEffect(() => {
+    if (showAudioControlsInitially) {
+      setShowToolbar(true);
+    }
+  }, [showAudioControlsInitially]);
 
   // Parse document into structured blocks and synchronized sentences
   const { blocks, allSentences } = useMemo(() => {
@@ -231,10 +262,11 @@ export default function AdobeContentReader({
   // Load sentences into speechEngine when content changes
   useEffect(() => {
     if (allSentences.length > 0) {
+      speechEngine.setTrackMetadata(chapterTitle || 'Lesson Audio', bookTitle || 'AxonPass Textbook');
       speechEngine.loadSentences(allSentences.map((s) => s.cleanSpeech));
       setActiveSentenceIndex(null);
     }
-  }, [allSentences]);
+  }, [allSentences, chapterTitle, bookTitle]);
 
   // Subscribe to speechEngine state and sentence changes
   useEffect(() => {
@@ -260,6 +292,7 @@ export default function AdobeContentReader({
 
     const unsubSentence = speechEngine.onSentenceChange((index) => {
       setActiveSentenceIndex(index);
+      onSentenceProgress?.(index);
 
       // Adobe-style auto-scroll to keep active sentence centered in view
       if (followAlong) {
@@ -276,7 +309,39 @@ export default function AdobeContentReader({
       unsubState();
       unsubSentence();
     };
-  }, [followAlong, autoAdvanceChapter, onNextChapter]);
+  }, [followAlong, autoAdvanceChapter, onNextChapter, onSentenceProgress]);
+
+  // Capture text selection for Kindle-style Highlight / Flashcard / Tutor popover
+  const handleMouseUpSelection = () => {
+    if (typeof window === 'undefined') return;
+    const sel = window.getSelection()?.toString().trim() || '';
+    if (sel.length >= 8 && sel.length <= 1200) {
+      setSelectedText(sel);
+    } else if (sel.length === 0) {
+      setSelectedText('');
+    }
+  };
+
+  // Keyboard shortcuts when toolbar is visible
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) {
+        return;
+      }
+      if (e.key === '[') {
+        speechEngine.setRate(Math.max(0.5, Number((speechEngine.getState().rate - 0.25).toFixed(2))));
+      } else if (e.key === ']') {
+        speechEngine.setRate(Math.min(2.5, Number((speechEngine.getState().rate + 0.25).toFixed(2))));
+      } else if (e.shiftKey && e.key === 'ArrowRight') {
+        speechEngine.skipNext();
+      } else if (e.shiftKey && e.key === 'ArrowLeft') {
+        speechEngine.skipPrev();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Handle click-to-read from any sentence
   const handleSentenceClick = (sentenceIndex: number) => {
@@ -713,9 +778,27 @@ export default function AdobeContentReader({
         </div>
       )}
 
-      {/* Floating Read Aloud Launcher if Toolbar is Hidden */}
+      {/* Floating Read Aloud Launcher & Saved Position Resume if Toolbar is Hidden */}
       {!showToolbar && (
-        <div style={{ marginBottom: 'var(--space-3)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ marginBottom: 'var(--space-3)', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+          {initialSentenceIndex > 0 && initialSentenceIndex < allSentences.length && (
+            <button
+              type="button"
+              onClick={() => handleSentenceClick(initialSentenceIndex)}
+              className="btn btn-sm btn-primary"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: 'var(--text-xs)',
+                fontWeight: 'bold',
+                borderRadius: 'var(--radius-full)',
+              }}
+            >
+              <span>▶</span>
+              <span>Resume Audio (Sentence {initialSentenceIndex + 1}/{allSentences.length})</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -739,10 +822,131 @@ export default function AdobeContentReader({
         </div>
       )}
 
+      {/* Resume Audio Pill when Toolbar Open & Saved Sentence Exists */}
+      {showToolbar && !playbackState.isPlaying && initialSentenceIndex > 0 && initialSentenceIndex < allSentences.length && (
+        <div
+          style={{
+            marginBottom: 'var(--space-3)',
+            padding: '8px 14px',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor: 'var(--color-primary-surface)',
+            border: '1px solid var(--color-primary-light)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '8px',
+            fontSize: 'var(--text-xs)',
+          }}
+        >
+          <span>🎧 Saved audio bookmark at <strong>sentence {initialSentenceIndex + 1} of {allSentences.length}</strong></span>
+          <button
+            type="button"
+            className="btn btn-xs btn-primary"
+            onClick={() => handleSentenceClick(initialSentenceIndex)}
+          >
+            ▶ Resume Here
+          </button>
+        </div>
+      )}
+
+      {/* Kindle-Style Text Selection Toolbar */}
+      {(selectedText || selectionFeedback) && (
+        <div
+          className="selection-action-bar"
+          style={{
+            position: 'sticky',
+            top: '8px',
+            zIndex: 40,
+            marginBottom: 'var(--space-3)',
+            padding: '8px 12px',
+            borderRadius: 'var(--radius-lg)',
+            backgroundColor: 'var(--color-ink)',
+            color: '#fff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '8px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+            fontSize: '12px',
+          }}
+        >
+          {selectionFeedback ? (
+            <span style={{ fontWeight: 700, color: '#86efac' }}>✓ {selectionFeedback}</span>
+          ) : (
+            <>
+              <span style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.9 }}>
+                “{selectedText.slice(0, 70)}{selectedText.length > 70 ? '...' : ''}”
+              </span>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-xs btn-secondary"
+                  onClick={() => {
+                    speechEngine.speakSnippet(selectedText);
+                  }}
+                >
+                  🎧 Read
+                </button>
+                {onHighlightSave && (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-warning"
+                    onClick={() => {
+                      onHighlightSave(selectedText);
+                      setSelectionFeedback('Saved highlight to your notes');
+                      setSelectedText('');
+                      setTimeout(() => setSelectionFeedback(null), 2200);
+                    }}
+                  >
+                    🟡 Highlight
+                  </button>
+                )}
+                {onCreateFlashcard && (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-primary"
+                    onClick={() => {
+                      onCreateFlashcard(selectedText);
+                      setSelectionFeedback('Added to FSRS Review Queue');
+                      setSelectedText('');
+                      setTimeout(() => setSelectionFeedback(null), 2200);
+                    }}
+                  >
+                    🃏 FSRS Card
+                  </button>
+                )}
+                {onAskTutor && (
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-secondary"
+                    onClick={() => {
+                      onAskTutor(selectedText);
+                      setSelectedText('');
+                    }}
+                  >
+                    🤖 Ask Tutor
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-xs btn-ghost"
+                  style={{ color: '#fff' }}
+                  onClick={() => setSelectedText('')}
+                >
+                  ✕
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {/* ──────────────────────────────────────────────────────────── */}
       {/* INTERACTIVE READING PROSE SURFACE                             */}
       {/* ──────────────────────────────────────────────────────────── */}
-      <article className={`ereader-prose font-size-${fontSize}`}>
+      <article className={`ereader-prose font-size-${fontSize}`} onMouseUp={handleMouseUpSelection}>
         {blocks.map((block, bIdx) => {
           if (block.type === 'divider') {
             return (
@@ -757,9 +961,9 @@ export default function AdobeContentReader({
             );
           }
 
-          if (block.type === 'code') {
+          if (block.type === 'code' || block.type === 'table') {
             return (
-              <div key={bIdx} style={{ margin: 'var(--space-4) 0' }}>
+              <div key={bIdx} className={block.type === 'table' ? 'ereader-table-wrap' : undefined} style={{ margin: 'var(--space-4) 0', overflowX: 'auto' }}>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}

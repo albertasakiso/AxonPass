@@ -11,6 +11,7 @@ import { pullContentFromServer, pushSyncQueue } from './lib/sync';
 // Lazy-loaded pages for fast initial bundle
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const HomePage = lazy(() => import('./pages/HomePage'));
+const LearnPage = lazy(() => import('./pages/LearnPage'));
 const CoursePlayerPage = lazy(() => import('./pages/CoursePlayerPage'));
 const PracticePage = lazy(() => import('./pages/PracticePage'));
 const InsightsPage = lazy(() => import('./pages/InsightsPage'));
@@ -126,8 +127,10 @@ export default function App() {
             }
           >
             <Route path="/" element={<HomePage />} />
-            <Route path="/learn" element={<CoursePlayerPage />} />
-            <Route path="/learn/:certId" element={<CoursePlayerPage />} />
+            <Route path="/learn" element={<LearnPage />} />
+            <Route path="/learn/:certId" element={<LearnPage />} />
+            <Route path="/courses" element={<CoursePlayerPage />} />
+            <Route path="/courses/:certId" element={<CoursePlayerPage />} />
             <Route path="/practice" element={<PracticePage />} />
             <Route path="/quiz" element={<QuizPage />} />
             <Route path="/results" element={<ResultsPage />} />

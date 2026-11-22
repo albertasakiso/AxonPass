@@ -14,6 +14,7 @@ import type { CourseLesson } from '../types/course';
 import { useAcademyProgressStore } from '../stores/academyProgressStore';
 import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
 import { StorageEfficiencyPanel } from '../components/academy/StorageEfficiencyPanel';
+import AdobeContentReader from '../components/learn/AdobeContentReader';
 import {
   fetchSynthesizedLessons,
   fetchSynthesizedQuestions,
@@ -22,14 +23,35 @@ import {
 
 const TIERS: DifficultyTier[] = [1, 2, 3, 4, 5];
 
+function lessonToSpeechMarkdown(lesson: CourseLesson): string {
+  const sections: string[] = [`# ${lesson.title}`, lesson.summary];
+  if (lesson.learningObjectives?.length) {
+    sections.push('## Learning Objectives\n' + lesson.learningObjectives.map((o) => `- ${o}`).join('\n'));
+  }
+  for (const c of lesson.coreConcepts || []) {
+    sections.push(`## ${c.heading}\n${c.explanation}${c.mentalModel ? `\n\n> Mental Model: ${c.mentalModel}` : ''}`);
+  }
+  if (lesson.realWorldScenario) {
+    sections.push(
+      `## Real-World Scenario: ${lesson.realWorldScenario.title}\n${lesson.realWorldScenario.situation}\n\n${lesson.realWorldScenario.analysis}\n\nTakeaway: ${lesson.realWorldScenario.takeaway}`
+    );
+  }
+  if (lesson.examTraps?.length) {
+    sections.push('## Exam Traps & Pro Tips\n' + lesson.examTraps.map((t) => `- ${t}`).join('\n'));
+  }
+  return sections.join('\n\n');
+}
+
 type WorkspaceView =
   | { type: 'lesson'; domainId: string; lessonId: string }
   | { type: 'capstone' }
   | { type: 'strategy' }
   | { type: 'cloud_sim' };
 
-export default function CoursePlayerPage() {
-  const { certId } = useParams<{ certId?: string }>();
+export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: string }) {
+  const { certId: routeCertId } = useParams<{ certId?: string }>();
+  const certId = embeddedCertId || routeCertId;
+  const isEmbedded = Boolean(embeddedCertId);
   const navigate = useNavigate();
 
   // Catalog filters
@@ -41,6 +63,7 @@ export default function CoursePlayerPage() {
   const [selectedOptions, setSelectedOptions] = useState<Record<string, number>>({});
   const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({});
   const [showGlossary, setShowGlossary] = useState(false);
+  const [showAudioLesson, setShowAudioLesson] = useState(false);
   const [showModelSolution, setShowModelSolution] = useState(false);
   const [flashcardsAdded, setFlashcardsAdded] = useState<Record<string, boolean>>({});
 
@@ -307,44 +330,46 @@ export default function CoursePlayerPage() {
   return (
     <div className="academy-page">
       {/* Top Course Banner */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => navigate('/learn')}
-          >
-            ← All Courses
-          </button>
-          <div>
-            <span className={`tier-badge tier-badge--${course.tier}`}>
-              {course.certCode} · Tier {course.tier}
-            </span>
-            <h1 style={{ margin: '2px 0 0', fontSize: 'var(--text-xl)', fontFamily: 'var(--font-display)' }}>
-              {course.title}
-            </h1>
+      {!isEmbedded && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => navigate('/learn')}
+            >
+              ← All Courses
+            </button>
+            <div>
+              <span className={`tier-badge tier-badge--${course.tier}`}>
+                {course.certCode} · Tier {course.tier}
+              </span>
+              <h1 style={{ margin: '2px 0 0', fontSize: 'var(--text-xl)', fontFamily: 'var(--font-display)' }}>
+                {course.title}
+              </h1>
+            </div>
           </div>
-        </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <div style={{ minWidth: '140px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Progress</span>
-              <span>{stats.percentComplete}%</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+            <div style={{ minWidth: '140px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, display: 'flex', justifyContent: 'space-between' }}>
+                <span>Progress</span>
+                <span>{stats.percentComplete}%</span>
+              </div>
+              <div className="progress-track">
+                <div className="progress-fill progress-fill--emerald" style={{ width: `${stats.percentComplete}%` }} />
+              </div>
             </div>
-            <div className="progress-track">
-              <div className="progress-fill progress-fill--emerald" style={{ width: `${stats.percentComplete}%` }} />
-            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => navigate('/practice')}
+            >
+              ✍️ Exam Simulator
+            </button>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => navigate('/practice')}
-          >
-            ✍️ Exam Simulator
-          </button>
         </div>
-      </div>
+      )}
 
       {/* Main Split Layout: Syllabus + Lesson Workspace */}
       <div className="course-player-layout">
@@ -615,13 +640,36 @@ export default function CoursePlayerPage() {
                     </span>
                   ))}
                 </div>
-                <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)' }}>
-                  {activeLesson.title}
-                </h2>
-                <p style={{ margin: '6px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-ink-muted)' }}>
-                  {activeLesson.summary}
-                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                  <div>
+                    <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 'var(--text-2xl)' }}>
+                      {activeLesson.title}
+                    </h2>
+                    <p style={{ margin: '6px 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-ink-muted)' }}>
+                      {activeLesson.summary}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${showAudioLesson ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setShowAudioLesson((s) => !s)}
+                  >
+                    🎧 {showAudioLesson ? 'Hide Read Aloud' : 'Listen to Lesson'}
+                  </button>
+                </div>
               </div>
+
+              {showAudioLesson && (
+                <div className="card" style={{ padding: 'var(--space-4)', borderLeft: '4px solid var(--color-primary)' }}>
+                  <AdobeContentReader
+                    contentMarkdown={lessonToSpeechMarkdown(activeLesson)}
+                    chapterTitle={activeLesson.title}
+                    bookTitle={`${course.certCode} Guided Lesson`}
+                    showAudioControlsInitially={true}
+                    onNextChapter={handleCompleteAndContinue}
+                  />
+                </div>
+              )}
 
               {/* Learning Objectives */}
               <div className="concept-card">

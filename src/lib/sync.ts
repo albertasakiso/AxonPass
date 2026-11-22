@@ -110,12 +110,7 @@ export async function pullContentFromServer(): Promise<void> {
       await db.questions.bulkPut(questions);
     }
 
-    // Pull study materials for explainer nodes (v3 §7.2)
-    const { data: materials } = await supabase.from('study_materials').select('*');
-    if (materials && materials.length > 0) {
-      await db.studyMaterials.bulkPut(materials);
-    }
-
+    // Pull lightweight glossary & metadata; heavy full-book chapters lazy-load on demand in textbookService
     // Pull glossary terms
     const { data: glossary } = await supabase.from('glossary_terms').select('*');
     if (glossary && glossary.length > 0) {
@@ -138,11 +133,18 @@ export async function pullContentFromServer(): Promise<void> {
       console.warn('Case studies tables not available yet');
     }
 
-    // Pull subtopics if available
+    // Pull lightweight subtopic metadata (content_body lazy-loaded when opening a module)
     try {
-      const { data: subtopics } = await supabase.from('subtopics').select('*');
+      const { data: subtopics } = await supabase
+        .from('subtopics')
+        .select('id, topic_id, subtopic_code, name, key_terms, exam_tips, estimated_read_minutes, learning_objectives, sort_order, created_at');
       if (subtopics && subtopics.length > 0) {
-        await db.subtopics.bulkPut(subtopics);
+        const existingMap = new Map((await db.subtopics.toArray()).map((s) => [s.id, s]));
+        const merged = subtopics.map((s) => ({
+          ...s,
+          content_body: existingMap.get(s.id)?.content_body ?? null,
+        }));
+        await db.subtopics.bulkPut(merged);
       }
     } catch {
       // Optional table

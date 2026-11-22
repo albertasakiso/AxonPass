@@ -24,7 +24,8 @@ export type RealtimeTable =
   | 'book_mastery_notes'
   | 'fsrs_cards'
   | 'user_gamification_stats'
-  | 'ai_coach_sessions';
+  | 'ai_coach_sessions'
+  | 'user_reading_progress';
 
 export interface RealtimeChangeEvent {
   table: RealtimeTable;
@@ -126,6 +127,7 @@ class RealtimeSyncManager {
       'fsrs_cards',
       'user_gamification_stats',
       'ai_coach_sessions',
+      'user_reading_progress',
     ];
 
     for (const table of tables) {

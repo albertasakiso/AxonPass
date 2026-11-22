@@ -36,11 +36,61 @@ class SpeechEngine {
 
   private onSentenceChangeCallbacks: Set<SentenceCallback> = new Set();
   private onStateChangeCallbacks: Set<StateCallback> = new Set();
+  private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  private trackTitle: string = 'AxonPass Read Aloud';
+  private trackChapter: string = 'Study Material';
 
   constructor() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       this.synth = window.speechSynthesis;
       this.initVoices();
+    }
+  }
+
+  public setTrackMetadata(title: string, chapter?: string): void {
+    this.trackTitle = title || 'AxonPass Read Aloud';
+    this.trackChapter = chapter || 'Study Material';
+    this.updateMediaSession();
+  }
+
+  private updateMediaSession(): void {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      if (typeof MediaMetadata !== 'undefined') {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: this.trackTitle,
+          artist: 'AxonPass Audio Study',
+          album: this.trackChapter,
+        });
+      }
+      navigator.mediaSession.playbackState = this.isPlaying && !this.isPaused ? 'playing' : this.isPaused ? 'paused' : 'none';
+      navigator.mediaSession.setActionHandler('play', () => this.resume());
+      navigator.mediaSession.setActionHandler('pause', () => this.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', () => this.skipPrev());
+      navigator.mediaSession.setActionHandler('nexttrack', () => this.skipNext());
+      navigator.mediaSession.setActionHandler('stop', () => this.stop());
+    } catch {
+      // MediaSession not supported in all contexts
+    }
+  }
+
+  private startKeepAlive(): void {
+    this.stopKeepAlive();
+    if (typeof window === 'undefined' || !this.synth) return;
+    // Prevent Chromium/Edge Web Speech API from silently stalling after ~15s on long utterances
+    this.keepAliveTimer = setInterval(() => {
+      if (!this.synth || !this.isPlaying || this.isPaused) return;
+      if (this.synth.speaking && !this.synth.paused) {
+        this.synth.pause();
+        this.synth.resume();
+      }
+    }, 10000);
+  }
+
+  private stopKeepAlive(): void {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
     }
   }
 
@@ -175,6 +225,8 @@ class SpeechEngine {
     if (!this.synth || !this.isPlaying || this.currentIndex >= this.sentences.length) {
       this.isPlaying = false;
       this.isPaused = false;
+      this.stopKeepAlive();
+      this.updateMediaSession();
       this.notifyState();
       return;
     }
@@ -191,6 +243,8 @@ class SpeechEngine {
     }
 
     this.utterance.onstart = () => {
+      this.startKeepAlive();
+      this.updateMediaSession();
       this.notifySentence(this.currentIndex, sentence);
       this.notifyState();
     };
@@ -204,6 +258,8 @@ class SpeechEngine {
           this.isPlaying = false;
           this.isPaused = false;
           this.currentIndex = 0;
+          this.stopKeepAlive();
+          this.updateMediaSession();
           this.notifyState();
         }
       }
@@ -214,16 +270,29 @@ class SpeechEngine {
       if (e.error === 'canceled' || e.error === 'interrupted') return;
       console.warn('SpeechSynthesis error:', e);
       this.isPlaying = false;
+      this.stopKeepAlive();
+      this.updateMediaSession();
       this.notifyState();
     };
 
     this.synth.speak(this.utterance);
   }
 
+  public speakSnippet(text: string): void {
+    if (!this.synth || !text.trim()) return;
+    this.stop();
+    const u = new SpeechSynthesisUtterance(text.trim());
+    u.rate = this.rate;
+    if (this.selectedVoice) u.voice = this.selectedVoice;
+    this.synth.speak(u);
+  }
+
   public pause(): void {
     if (!this.synth || !this.isPlaying) return;
     this.synth.pause();
     this.isPaused = true;
+    this.stopKeepAlive();
+    this.updateMediaSession();
     this.notifyState();
   }
 
@@ -232,6 +301,8 @@ class SpeechEngine {
     if (this.isPaused) {
       this.synth.resume();
       this.isPaused = false;
+      this.startKeepAlive();
+      this.updateMediaSession();
       this.notifyState();
     } else {
       this.speakCurrent();
@@ -244,6 +315,8 @@ class SpeechEngine {
     this.isPlaying = false;
     this.isPaused = false;
     this.currentIndex = 0;
+    this.stopKeepAlive();
+    this.updateMediaSession();
     this.notifyState();
   }
 

@@ -12,6 +12,8 @@ import {
   type DifficultyTier,
 } from '../types/academy';
 import { useAcademyProgressStore } from '../stores/academyProgressStore';
+import { useAuthStore } from '../stores/authStore';
+import { toDbCertSlug } from '../lib/textbookService';
 import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
 import { StorageEfficiencyPanel } from '../components/academy/StorageEfficiencyPanel';
 
@@ -314,16 +316,32 @@ export default function PathsPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: 'var(--space-2)', flexWrap: 'wrap' }}>
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
                   style={{ flex: 1 }}
-                  onClick={() => navigate(`/learn/${path.id}`)}
+                  onClick={() => {
+                    const dbSlug = toDbCertSlug(path.id);
+                    useAuthStore.getState().setActiveCertification(dbSlug);
+                    navigate(`/learn/${dbSlug}?tab=textbook`);
+                  }}
+                >
+                  📖 Full Textbook
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    const dbSlug = toDbCertSlug(path.id);
+                    useAuthStore.getState().setActiveCertification(dbSlug);
+                    navigate(`/learn/${dbSlug}?tab=guided`);
+                  }}
+                  title="Open Interactive Guided Course & Labs"
                 >
                   {(certCourseProgress[path.id]?.completedLessonIds.length ?? 0) > 0
-                    ? `Continue Course (${certCourseProgress[path.id].completedLessonIds.length} done)`
-                    : 'Learn End-to-End'}
+                    ? `🎓 ${certCourseProgress[path.id].completedLessonIds.length} done`
+                    : '🎓 Guided'}
                 </button>
                 <button
                   type="button"

@@ -128,18 +128,23 @@ export const DocumentReader: React.FC<DocumentReaderProps> = ({
 
     async function fetchDocGuide() {
       try {
-        const { data: chunks } = await supabase
-          .from('document_chunks')
-          .select('chunk_text, chunk_index')
-          .or(`document_name.ilike.%${viewingVaultDoc!.file_name}%,document_path.ilike.%${viewingVaultDoc!.file_name}%`)
-          .order('chunk_index', { ascending: true })
-          .limit(30);
+        // Query compact deduplicated knowledge_units (replaced retired document_chunks)
+        const cleanDocName = viewingVaultDoc!.file_name.replace(/['",()]/g, '').trim();
+        const { data: units } = await supabase
+          .from('knowledge_units')
+          .select('title, summary, content, domain_number, source_doc, source_ref')
+          .or(`source_doc.ilike.%${cleanDocName}%,source_ref.ilike.%${cleanDocName}%`)
+          .limit(35);
 
         if (!isMounted) return;
 
-        if (chunks && chunks.length > 0) {
-          const compiled = chunks
-            .map((c, i) => `### Section ${i + 1}\n\n${c.chunk_text.trim()}`)
+        if (units && units.length > 0) {
+          const compiled = units
+            .map((u: Record<string, unknown>, i: number) => {
+              const body = String(u.content || u.summary || '').trim();
+              const head = String(u.title || `Section ${i + 1}`);
+              return `### ${head}\n\n${body}`;
+            })
             .join('\n\n---\n\n');
           setVaultDocContent(compiled);
         } else {

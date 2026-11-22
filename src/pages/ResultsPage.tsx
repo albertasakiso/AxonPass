@@ -8,6 +8,8 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuizStore } from '../stores/quizStore';
+import { useAuthStore } from '../stores/authStore';
+import { toDbCertSlug } from '../lib/textbookService';
 import { formatDuration, analyzeCognitiveFatigue } from '../lib/timer';
 import { supabase } from '../lib/supabase';
 import AiExplainerDrawer from '../components/quiz/AiExplainerDrawer';
@@ -15,7 +17,9 @@ import type { Question } from '../types';
 
 export default function ResultsPage() {
   const navigate = useNavigate();
+  const { activeCertificationSlug } = useAuthStore();
   const { result, questions, answers, flaggedQuestionIds, resetQuiz, startQuiz } = useQuizStore();
+  const textbookSlug = toDbCertSlug(activeCertificationSlug || 'cisa');
   const [isLaunchingRepair, setIsLaunchingRepair] = useState(false);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'incorrect' | 'flagged'>('all');
   const [expandedQuestionId, setExpandedQuestionId] = useState<string | null>(null);
@@ -234,14 +238,23 @@ export default function ResultsPage() {
                       {wc.incorrectCount} missed in this session · Accuracy: {wc.accuracy}%
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={isLaunchingRepair}
-                    className="btn btn-sm btn-primary"
-                    onClick={() => handleLaunchTopicRepair(wc.topicId, wc.domainId)}
-                  >
-                    ⚡ Start 10-Q Repair Set →
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => navigate(`/learn/${textbookSlug}?tab=textbook&q=${encodeURIComponent(wc.topicName)}`)}
+                    >
+                      📖 Review in Textbook
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isLaunchingRepair}
+                      className="btn btn-sm btn-primary"
+                      onClick={() => handleLaunchTopicRepair(wc.topicId, wc.domainId)}
+                    >
+                      ⚡ Start 10-Q Repair Set →
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -513,8 +526,8 @@ export default function ResultsPage() {
                         <p style={{ margin: 0, lineHeight: 1.5 }}>{q.rationale}</p>
                       </div>
 
-                      {/* AI Cognitive Dissection Button */}
-                      <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)' }}>
+                      {/* AI Cognitive Dissection & Textbook Remediation Buttons */}
+                      <div style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                         <button
                           type="button"
                           onClick={() => setActiveExplainerQuestion(q)}
@@ -529,6 +542,17 @@ export default function ResultsPage() {
                           }}
                         >
                           <span>🧠</span> AI Cognitive Dissection &amp; Option Matrix →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const query = (q.source_reference || q.tags?.[0] || q.stem.split(/\s+/).slice(0, 5).join(' ')).trim();
+                            navigate(`/learn/${textbookSlug}?tab=textbook&q=${encodeURIComponent(query)}`);
+                          }}
+                          className="btn btn-sm btn-secondary"
+                          style={{ fontSize: '12px', fontWeight: 'bold' }}
+                        >
+                          📖 Review in Full Textbook
                         </button>
                       </div>
                     </div>

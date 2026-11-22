@@ -1,26 +1,83 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useQuizStore } from '../stores/quizStore';
 import { useAuthStore } from '../stores/authStore';
 import { useLessonProgressStore } from '../stores/lessonProgressStore';
+import { useReadingProgressStore } from '../stores/readingProgressStore';
+import { useAcademyProgressStore } from '../stores/academyProgressStore';
+import { toDbCertSlug, toCourseCertId } from '../lib/textbookService';
+import { CERTIFICATION_PATHS } from '../data';
+import { DIFFICULTY_TIER_META } from '../types/academy';
 import { LessonViewer } from '../components/learn/LessonViewer';
 import { GlossaryDrawer } from '../components/learn/GlossaryDrawer';
 import { DocumentReader } from '../components/learn/DocumentReader';
+import { FullTextbookReader } from '../components/learn/FullTextbookReader';
 import { InteractiveCalculators } from '../components/learn/InteractiveCalculators';
 import { CertVersionDeltaViewer } from '../components/learn/CertVersionDeltaViewer';
 import { TaskStatementsDrawer } from '../components/learn/TaskStatementsDrawer';
 import { ConceptGraphExplorer } from '../components/learn/ConceptGraphExplorer';
+import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
+import CoursePlayerPage from './CoursePlayerPage';
 import type { Certification, Domain, Topic, Subtopic, Question, GlossaryTerm, StudyMaterial, TaskStatement, DocumentIngestionRecord } from '../types';
+
+type LearnTab = 'textbook' | 'syllabus' | 'guided' | 'graph' | 'delta' | 'tools';
 
 export default function LearnPage() {
   const navigate = useNavigate();
+  const { certId: routeCertId } = useParams<{ certId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { startQuiz } = useQuizStore();
 
   const { activeCertificationSlug, setActiveCertification } = useAuthStore();
-  const effectiveCertSlug = activeCertificationSlug || 'cisa';
+  const effectiveCertSlug = routeCertId
+    ? toDbCertSlug(routeCertId)
+    : toDbCertSlug(activeCertificationSlug || 'cisa');
 
-  const [viewMode, setViewMode] = useState<'syllabus' | 'documents' | 'graph' | 'delta' | 'calculators'>('syllabus');
+  useEffect(() => {
+    if (routeCertId) {
+      const normalized = toDbCertSlug(routeCertId);
+      if (normalized !== activeCertificationSlug) {
+        setActiveCertification(normalized);
+      }
+    }
+  }, [routeCertId, activeCertificationSlug, setActiveCertification]);
+
+  const initialTabParam = searchParams.get('tab') as LearnTab | null;
+  const [viewMode, setViewMode] = useState<LearnTab>(
+    initialTabParam && ['textbook', 'syllabus', 'guided', 'graph', 'delta', 'tools'].includes(initialTabParam)
+      ? initialTabParam
+      : 'textbook'
+  );
+
+  useEffect(() => {
+    const t = searchParams.get('tab') as LearnTab | null;
+    if (t && ['textbook', 'syllabus', 'guided', 'graph', 'delta', 'tools'].includes(t) && t !== viewMode) {
+      setViewMode(t);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const switchViewMode = (tab: LearnTab) => {
+    setViewMode(tab);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', tab);
+    setSearchParams(next, { replace: true });
+  };
+
+  const urlSearchQuery = searchParams.get('q') || '';
+  const [toolsSubTab, setToolsSubTab] = useState<'vault' | 'calculators'>('vault');
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [coachPrompt, setCoachPrompt] = useState<string | undefined>(undefined);
+  const [resumeTarget, setResumeTarget] = useState<{ chapterId?: string; sectionId?: string } | null>(null);
+
+  const { lastReadByCert } = useReadingProgressStore();
+  const { pathProgress } = useAcademyProgressStore();
+  const courseId = toCourseCertId(effectiveCertSlug);
+  const certPathMeta = useMemo(
+    () => CERTIFICATION_PATHS.find((p) => p.id === courseId),
+    [courseId]
+  );
+
   const [certifications, setCertifications] = useState<Certification[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
@@ -245,6 +302,67 @@ export default function LearnPage() {
     return titles.size;
   }, [studyMaterials]);
 
+  const handleStartChapterQuiz = async (
+    domainNumber: number | null,
+    chapterTitle: string,
+    _chapterId: string
+  ) => {
+    if (!currentCert) return;
+    setLoading(true);
+    try {
+      const targetDomain =
+        domainNumber !== null
+          ? domains.find((d) => d.domain_number === domainNumber)
+          : undefined;
+
+      let query = supabase
+        .from('questions')
+        .select('*')
+        .eq('certification_id', currentCert.id)
+        .eq('is_active', true);
+
+      if (targetDomain) {
+        query = query.eq('domain_id', targetDomain.id);
+      }
+
+      const { data: qData } = await query.limit(40);
+      let pool: Question[] = qData || [];
+
+      if (pool.length === 0) {
+        const { data: anyCertQs } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('certification_id', currentCert.id)
+          .eq('is_active', true)
+          .limit(30);
+        pool = anyCertQs || [];
+      }
+
+      if (pool.length === 0) {
+        alert(`No practice questions found for ${chapterTitle} yet.`);
+        setLoading(false);
+        return;
+      }
+
+      const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, 10);
+      await startQuiz(
+        shuffled,
+        'domain_drill',
+        600,
+        currentCert.id,
+        targetDomain?.id || null,
+        'immediate',
+        null,
+        `Chapter Mastery Check: ${chapterTitle}`
+      );
+      setLoading(false);
+      navigate('/quiz');
+    } catch (err) {
+      console.error('Failed to launch chapter mastery quiz:', err);
+      setLoading(false);
+    }
+  };
+
   const handleStartDomainQuiz = async (domainId: string) => {
     if (!currentCert) return;
     setLoading(true);
@@ -464,7 +582,12 @@ export default function LearnPage() {
         {certifications.map(c => (
           <button
             key={c.id}
-            onClick={() => setActiveCertification(c.slug)}
+            onClick={() => {
+              setActiveCertification(c.slug);
+              if (routeCertId) {
+                navigate(`/learn/${c.slug}?tab=${viewMode}`, { replace: true });
+              }
+            }}
             className={`cert-tab-btn ${effectiveCertSlug === c.slug ? 'active' : ''}`}
             style={{
               padding: '6px 14px',
@@ -482,19 +605,44 @@ export default function LearnPage() {
       {/* Header Banner */}
       <div className="learn-header-banner">
         <div>
-          <div className="learn-header-badge">
-            <span>📚</span> {currentCert?.code || 'Certification'} Official Curriculum &amp; Library
+          <div className="learn-header-badge" style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span>📚 {currentCert?.code || effectiveCertSlug.toUpperCase()} Official Book &amp; Course Hub</span>
+            {certPathMeta && (
+              <span style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '999px', fontSize: '11px' }}>
+                Tier {certPathMeta.tier}: {DIFFICULTY_TIER_META[certPathMeta.tier].label}
+              </span>
+            )}
           </div>
           <h1 className="learn-header-title">
-            {currentCert?.name || 'Certification Curriculum'}
+            {currentCert?.name || certPathMeta?.title || 'Certification Curriculum'}
           </h1>
           <p className="learn-header-desc">
-            {currentCert?.description || `Curriculum organized across ${domains.length} domains, ${allCertTopics.length} topics, and ${allCertSubtopics.length} granular lessons with authoritative Review Manual text.`}
+            {currentCert?.description || certPathMeta?.description || `Complete end-to-end learning across ${domains.length} domains, ${allCertTopics.length} topics, and full authoritative textbooks with Read Aloud.`}
           </p>
+          {pathProgress[courseId]?.targetExamDate && (
+            <div style={{ fontSize: '12px', marginTop: '6px', opacity: 0.92 }}>
+              🎯 Target Exam Date: <strong>{pathProgress[courseId].targetExamDate}</strong>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
         <div className="learn-actions">
+          {lastReadByCert[effectiveCertSlug] && (
+            <button
+              type="button"
+              onClick={() => {
+                const ptr = lastReadByCert[effectiveCertSlug];
+                setResumeTarget({ chapterId: ptr.chapterId, sectionId: ptr.sectionId });
+                switchViewMode('textbook');
+              }}
+              className="btn btn-secondary"
+              style={{ backgroundColor: 'rgba(255,255,255,0.22)', color: '#fff', borderColor: 'rgba(255,255,255,0.4)', fontWeight: 700 }}
+            >
+              🎧 Resume: {lastReadByCert[effectiveCertSlug].sectionTitle.slice(0, 22)}...
+            </button>
+          )}
+
           {taskStatements.length > 0 && (
             <button
               onClick={() => setIsTasksOpen(true)}
@@ -512,7 +660,19 @@ export default function LearnPage() {
           >
             📖 Glossary ({glossaryTerms.length})
           </button>
-          
+
+          <button
+            type="button"
+            onClick={() => {
+              setCoachPrompt(`Act as my ${currentCert?.code || effectiveCertSlug.toUpperCase()} tutor and exam proctor. What should I focus on next?`);
+              setCoachOpen(true);
+            }}
+            className="btn btn-secondary"
+            style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}
+          >
+            🤖 AI Tutor
+          </button>
+
           {selectedDomainId && (
             <button
               onClick={() => handleStartDomainQuiz(selectedDomainId)}
@@ -527,29 +687,38 @@ export default function LearnPage() {
 
       {/* Primary Learning Mode Switcher Toolbar */}
       <div className="learn-toolbar mb-4" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        
-        {/* Segmented Pill Navigation */}
+
+        {/* 6 Unified Workspace Tabs */}
         <div className="segmented-nav" role="tablist">
           <button
-            onClick={() => setViewMode('syllabus')}
+            onClick={() => switchViewMode('textbook')}
+            className={`segmented-pill ${viewMode === 'textbook' ? 'active' : ''}`}
+            role="tab"
+            aria-selected={viewMode === 'textbook'}
+          >
+            <span>📖</span> Full Textbook
+          </button>
+
+          <button
+            onClick={() => switchViewMode('syllabus')}
             className={`segmented-pill ${viewMode === 'syllabus' ? 'active' : ''}`}
             role="tab"
             aria-selected={viewMode === 'syllabus'}
           >
-            <span>🌳</span> Syllabus ({allCertTopics.length > 0 ? allCertTopics.length : topics.length} Topics)
+            <span>🌳</span> Official Syllabus ({allCertTopics.length > 0 ? allCertTopics.length : topics.length})
           </button>
 
           <button
-            onClick={() => setViewMode('documents')}
-            className={`segmented-pill ${viewMode === 'documents' ? 'active' : ''}`}
+            onClick={() => switchViewMode('guided')}
+            className={`segmented-pill ${viewMode === 'guided' ? 'active' : ''}`}
             role="tab"
-            aria-selected={viewMode === 'documents'}
+            aria-selected={viewMode === 'guided'}
           >
-            <span>📖</span> Review Manual ({distinctChapterCount > 0 ? distinctChapterCount : studyMaterials.length} Ch{distinctManualCount > 1 ? ` • ${distinctManualCount} Manuals` : ''})
+            <span>🎓</span> Guided Course &amp; Labs
           </button>
 
           <button
-            onClick={() => setViewMode('graph')}
+            onClick={() => switchViewMode('graph')}
             className={`segmented-pill ${viewMode === 'graph' ? 'active' : ''}`}
             role="tab"
             aria-selected={viewMode === 'graph'}
@@ -558,21 +727,21 @@ export default function LearnPage() {
           </button>
 
           <button
-            onClick={() => setViewMode('delta')}
+            onClick={() => switchViewMode('delta')}
             className={`segmented-pill ${viewMode === 'delta' ? 'active' : ''}`}
             role="tab"
             aria-selected={viewMode === 'delta'}
           >
-            <span>✨</span> Blueprint Delta Gap
+            <span>✨</span> Blueprint Delta
           </button>
 
           <button
-            onClick={() => setViewMode('calculators')}
-            className={`segmented-pill ${viewMode === 'calculators' ? 'active' : ''}`}
+            onClick={() => switchViewMode('tools')}
+            className={`segmented-pill ${viewMode === 'tools' ? 'active' : ''}`}
             role="tab"
-            aria-selected={viewMode === 'calculators'}
+            aria-selected={viewMode === 'tools'}
           >
-            <span>🧮</span> Calculators
+            <span>🧮</span> Vault &amp; Calculators ({distinctChapterCount > 0 ? `${distinctChapterCount} Ch` : vaultDocuments.length})
           </button>
         </div>
 
@@ -584,7 +753,22 @@ export default function LearnPage() {
         </div>
       </div>
 
-      {loading ? (
+      {viewMode === 'textbook' ? (
+        <FullTextbookReader
+          certSlug={effectiveCertSlug}
+          certName={currentCert?.name || certPathMeta?.title}
+          initialSearchQuery={urlSearchQuery}
+          initialChapterId={resumeTarget?.chapterId}
+          initialSectionId={resumeTarget?.sectionId}
+          onPracticeChapterQuiz={handleStartChapterQuiz}
+          onAskCoach={(prompt) => {
+            setCoachPrompt(prompt);
+            setCoachOpen(true);
+          }}
+        />
+      ) : viewMode === 'guided' ? (
+        <CoursePlayerPage embeddedCertId={courseId} />
+      ) : loading ? (
         <div style={{ textAlign: 'center', padding: 'var(--space-16)' }}>
           <div className="animate-spin" style={{ fontSize: '2.5rem', color: 'var(--color-primary)' }}>
             ⟳
@@ -600,29 +784,47 @@ export default function LearnPage() {
           onStartTopicQuiz={handleStartTopicCodeQuiz}
         />
       ) : viewMode === 'delta' ? (
-        /* View 4: Version Blueprint Gap & Delta Analysis across all certifications */
+        /* View: Version Blueprint Gap & Delta Analysis across all certifications */
         <CertVersionDeltaViewer
           certSlug={effectiveCertSlug}
           certCode={currentCert?.code || undefined}
           onStartDeltaQuiz={handleStartDeltaQuiz}
         />
-      ) : viewMode === 'documents' ? (
-        /* View 1: Full Document E-Reader & Audio Player */
-        <DocumentReader
-          materials={studyMaterials}
-          vaultDocuments={vaultDocuments}
-          allTopics={allCertTopics}
-          allSubtopics={allCertSubtopics}
-          domains={domains}
-          activeCertificationSlug={effectiveCertSlug}
-          activeMaterialId={selectedMaterialId}
-          onSelectMaterial={(m) => setSelectedMaterialId(m.id)}
-          onPracticeSection={handleStartSectionQuiz}
-          onPracticeChapter={(domId) => handleStartDomainQuiz(domId)}
-        />
-      ) : viewMode === 'calculators' ? (
-        /* View 2: Interactive Calculators & Simulators */
-        <InteractiveCalculators />
+      ) : viewMode === 'tools' ? (
+        <div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setToolsSubTab('vault')}
+              className={`btn btn-sm ${toolsSubTab === 'vault' ? 'btn-primary' : 'btn-secondary'}`}
+            >
+              📂 Review Manuals ({distinctManualCount} Vol) &amp; Vault ({vaultDocuments.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setToolsSubTab('calculators')}
+              className={`btn btn-sm ${toolsSubTab === 'calculators' ? 'btn-primary' : 'btn-secondary'}`}
+            >
+              🧮 Interactive Exam Calculators
+            </button>
+          </div>
+          {toolsSubTab === 'vault' ? (
+            <DocumentReader
+              materials={studyMaterials}
+              vaultDocuments={vaultDocuments}
+              allTopics={allCertTopics}
+              allSubtopics={allCertSubtopics}
+              domains={domains}
+              activeCertificationSlug={effectiveCertSlug}
+              activeMaterialId={selectedMaterialId}
+              onSelectMaterial={(m) => setSelectedMaterialId(m.id)}
+              onPracticeSection={handleStartSectionQuiz}
+              onPracticeChapter={(domId) => handleStartDomainQuiz(domId)}
+            />
+          ) : (
+            <InteractiveCalculators />
+          )}
+        </div>
       ) : (
         /* View 3: Interactive Syllabus Modules */
         <div>
@@ -862,6 +1064,15 @@ export default function LearnPage() {
           onClose={() => setIsTasksOpen(false)}
         />
       )}
+
+      {/* Local Open-Weights AI Tutor Drawer */}
+      <LocalCoachDrawer
+        isOpen={coachOpen}
+        onClose={() => setCoachOpen(false)}
+        initialMode="exam_proctor"
+        initialPrompt={coachPrompt}
+        contextDomain={currentCert?.code || effectiveCertSlug.toUpperCase()}
+      />
     </div>
   );
 

@@ -11,6 +11,21 @@ import {
   type BookMasteryNote,
 } from '../stores/academyProgressStore';
 import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
+import AdobeContentReader from '../components/learn/AdobeContentReader';
+
+function bookToSpeechMarkdown(book: LeadershipBook): string {
+  const parts = [
+    `# ${book.title}`,
+    `By ${book.author} (${book.year}). ${book.executiveSummary}`,
+    `## Core Framework: ${book.coreFramework}`,
+  ];
+  for (const idea of book.keyIdeas) {
+    parts.push(
+      `## ${idea.number}. ${idea.title}\n${idea.summary}${idea.quote ? `\n\n> "${idea.quote}"` : ''}\n\nMental Model: ${idea.mentalModel}\n\nAction Drill: ${idea.actionDrill}`
+    );
+  }
+  return parts.join('\n\n');
+}
 
 export default function BooksHubPage() {
   const featuredBook = useMemo(
@@ -22,6 +37,7 @@ export default function BooksHubPage() {
   const [noteType, setNoteType] = useState<BookMasteryNote['noteType']>('takeaway');
   const [coachOpen, setCoachOpen] = useState(false);
   const [coachPrompt, setCoachPrompt] = useState<string | undefined>(undefined);
+  const [showAudioReader, setShowAudioReader] = useState(false);
 
   const {
     bookNotes,
@@ -143,18 +159,38 @@ export default function BooksHubPage() {
               {selectedBook.author} ({selectedBook.year}) — {selectedBook.executiveSummary}
             </p>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() =>
-              openBookCoach(
-                `Walk me through applying "${selectedBook.coreFramework}" from ${selectedBook.title} to a real-world engineering & cybersecurity team.`
-              )
-            }
-          >
-            🤖 Apply Framework with AI
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${showAudioReader ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setShowAudioReader((s) => !s)}
+            >
+              🎧 {showAudioReader ? 'Hide Read Aloud' : 'Listen to Book'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() =>
+                openBookCoach(
+                  `Walk me through applying "${selectedBook.coreFramework}" from ${selectedBook.title} to a real-world engineering & cybersecurity team.`
+                )
+              }
+            >
+              🤖 Apply Framework with AI
+            </button>
+          </div>
         </div>
+
+        {showAudioReader && (
+          <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--color-bg-subtle)' }}>
+            <AdobeContentReader
+              contentMarkdown={bookToSpeechMarkdown(selectedBook)}
+              chapterTitle={selectedBook.title}
+              bookTitle={`${selectedBook.author} — Leadership Audio`}
+              showAudioControlsInitially={true}
+            />
+          </div>
+        )}
 
         {/* Key Ideas */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>

@@ -10,6 +10,7 @@ import type { AcademyId, AcademyLesson, FSRSRating } from '../types/academy';
 import { useAcademyProgressStore } from '../stores/academyProgressStore';
 import { analyzeSpeechLocally, type LocalCoachMode } from '../lib/ai/localCoachService';
 import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
+import AdobeContentReader from '../components/learn/AdobeContentReader';
 
 type AcademyTab = AcademyId | 'fsrs';
 
@@ -31,6 +32,7 @@ export default function AcademyPage() {
   const [coachOpen, setCoachOpen] = useState(false);
   const [coachMode, setCoachMode] = useState<LocalCoachMode>('speech_coach');
   const [coachPrompt, setCoachPrompt] = useState<string | undefined>(undefined);
+  const [showLessonAudio, setShowLessonAudio] = useState(false);
 
   const {
     lessonProgress,
@@ -247,10 +249,30 @@ export default function AcademyPage() {
                     {selectedLesson.summary}
                   </p>
                 </div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedLesson(null)}>
-                  Close ✕
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${showLessonAudio ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setShowLessonAudio((s) => !s)}
+                  >
+                    🎧 {showLessonAudio ? 'Hide Audio' : 'Read Aloud'}
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedLesson(null)}>
+                    Close ✕
+                  </button>
+                </div>
               </div>
+
+              {showLessonAudio && (
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <AdobeContentReader
+                    contentMarkdown={`# ${selectedLesson.title}\n\n${selectedLesson.summary}\n\n## Key Concepts\n${selectedLesson.keyConcepts.map((k) => `- ${k}`).join('\n')}\n\n## Actionable Takeaway\n${selectedLesson.actionableTakeaway}\n\n## Practice Drill: ${selectedLesson.drill.title}\n${selectedLesson.drill.prompt}\n\n${selectedLesson.drill.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}`}
+                    chapterTitle={selectedLesson.title}
+                    bookTitle={currentTrack.title}
+                    showAudioControlsInitially={true}
+                  />
+                </div>
+              )}
 
               {/* Key Concepts */}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: 'var(--space-4)' }}>
