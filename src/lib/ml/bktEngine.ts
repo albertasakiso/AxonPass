@@ -75,6 +75,9 @@ export function getCertScoreScale(certCode: string = 'CISA'): CertScoreScale {
     return { min: 0, max: 1000, passing: 700, scaleFactor: 150, offset: 700 };
   }
   // CompTIA
+  if (['SEC+', 'SECURITY+'].includes(code)) {
+    return { min: 100, max: 900, passing: 750, scaleFactor: 120, offset: 750 };
+  }
   if (['A+', 'NETWORK+', 'CYSA+'].includes(code)) {
     return { min: 100, max: 900, passing: 675, scaleFactor: 120, offset: 675 };
   }

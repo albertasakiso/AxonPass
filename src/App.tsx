@@ -23,6 +23,8 @@ const AdminPage = lazy(() => import('./pages/AdminPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const QuizPage = lazy(() => import('./pages/QuizPage'));
 const ResultsPage = lazy(() => import('./pages/ResultsPage'));
+const CatExamPage = lazy(() => import('./pages/CatExamPage'));
+const PbqLabsPage = lazy(() => import('./pages/PbqLabsPage'));
 
 function PageLoader() {
   return (
@@ -134,6 +136,8 @@ export default function App() {
             <Route path="/courses" element={<CoursePlayerPage />} />
             <Route path="/courses/:certId" element={<CoursePlayerPage />} />
             <Route path="/practice" element={<PracticePage />} />
+            <Route path="/cat" element={<CatExamPage />} />
+            <Route path="/pbq" element={<PbqLabsPage />} />
             <Route path="/quiz" element={<QuizPage />} />
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/insights" element={<InsightsPage />} />

@@ -8,16 +8,31 @@ import { db } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useProgressStore } from '../stores/progressStore';
+import { useReadingProgressStore } from '../stores/readingProgressStore';
+import { useAcademyProgressStore } from '../stores/academyProgressStore';
+import {
+  downloadCertificationOfflinePack,
+  getOfflinePackStatus,
+  inspectCachedQuestionCount,
+  clearOfflineChapterCache,
+} from '../lib/offlinePacks';
+import { exportStudyNotesMarkdown, openPrintableReadinessTranscript } from '../lib/exportCredentials';
 import type { Certification } from '../types';
 import AiClusterConfigPanel from '../components/admin/AiClusterConfigPanel';
 import FreeTierStorageMonitor from '../components/admin/FreeTierStorageMonitor';
 
 export default function SettingsPage() {
   const { user, signOut, activeCertificationSlug, setActiveCertification } = useAuthStore();
-  const { refreshProgress } = useProgressStore();
+  const { refreshProgress, predictedScaledScore, overallAccuracy, totalAttempted } = useProgressStore();
+  const readingRecords = useReadingProgressStore((s) => s.records);
+  const bookNotes = useAcademyProgressStore((s) => s.bookNotes);
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
 
   const [certifications, setCertifications] = useState<Certification[]>([]);
+  const [offlineStatus, setOfflineStatus] = useState(() => getOfflinePackStatus(activeCertificationSlug, 0));
+  const [packBusy, setPackBusy] = useState(false);
+  const [packProgressMsg, setPackProgressMsg] = useState<string | null>(null);
+  const [localTtsUrl, setLocalTtsUrl] = useState<string>(() => localStorage.getItem('anoxpass_local_tts_url') || '');
   const [themeMode, setThemeMode] = useState<string>(() => {
     return localStorage.getItem('alp_theme_mode') || 'system';
   });
@@ -40,6 +55,12 @@ export default function SettingsPage() {
     }
     loadCerts();
   }, []);
+
+  useEffect(() => {
+    inspectCachedQuestionCount(activeCertificationSlug).then((cnt) => {
+      setOfflineStatus(getOfflinePackStatus(activeCertificationSlug, cnt));
+    });
+  }, [activeCertificationSlug]);
 
   const handleThemeChange = (mode: string) => {
     setThemeMode(mode);
@@ -319,11 +340,129 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Data & Privacy */}
+      {/* Offline Study Packs & Local Neural Audio */}
       <div className="settings-section">
-        <h3>Data &amp; Privacy</h3>
+        <h3>Offline Study Pack &amp; Commute Audio</h3>
         <div className="card">
           <div className="card-body">
+            <div className="settings-row">
+              <div className="settings-label">
+                <h4>Active Track Offline Pack ({activeCertificationSlug.toUpperCase()})</h4>
+                <p>
+                  Cached locally: <strong>{offlineStatus.cachedQuestions.toLocaleString()}</strong> questions ·{' '}
+                  <strong>{offlineStatus.cachedChapters}</strong> chapters (~{offlineStatus.estimatedMb} MB)
+                </p>
+                {packProgressMsg && (
+                  <p style={{ color: 'var(--color-primary)', fontWeight: 600, marginTop: '4px' }}>{packProgressMsg}</p>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  disabled={packBusy}
+                  onClick={async () => {
+                    setPackBusy(true);
+                    const res = await downloadCertificationOfflinePack(activeCertificationSlug, setPackProgressMsg);
+                    const cnt = await inspectCachedQuestionCount(activeCertificationSlug);
+                    setOfflineStatus(getOfflinePackStatus(activeCertificationSlug, cnt));
+                    setPackProgressMsg(`✓ Cached ${res.questionsCached.toLocaleString()} Qs and ${res.chaptersCached} chapters offline.`);
+                    setPackBusy(false);
+                  }}
+                >
+                  {packBusy ? 'Downloading...' : '📥 Download Offline Pack'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={async () => {
+                    await clearOfflineChapterCache();
+                    const cnt = await inspectCachedQuestionCount(activeCertificationSlug);
+                    setOfflineStatus(getOfflinePackStatus(activeCertificationSlug, cnt));
+                    setPackProgressMsg('Cleared offline chapter text cache.');
+                  }}
+                >
+                  Clear Chapters
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-row">
+              <div className="settings-label">
+                <h4>Optional Local Open-Source Neural TTS URL</h4>
+                <p>Optional local Piper / Kokoro OpenAI-compatible speech endpoint (falls back to native Web Speech offline)</p>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <input
+                  type="url"
+                  className="input"
+                  style={{ minWidth: '220px', fontSize: 'var(--text-xs)' }}
+                  placeholder="http://127.0.0.1:8880/v1/audio/speech"
+                  value={localTtsUrl}
+                  onChange={(e) => {
+                    setLocalTtsUrl(e.target.value);
+                    localStorage.setItem('anoxpass_local_tts_url', e.target.value.trim());
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Data & Privacy */}
+      <div className="settings-section">
+        <h3>Data, Study Notes &amp; Credentials</h3>
+        <div className="card">
+          <div className="card-body">
+            <div className="settings-row">
+              <div className="settings-label">
+                <h4>Export Study Notes &amp; Highlights (.MD)</h4>
+                <p>Download all textbook highlights, personal notes, and book takeaways in Markdown</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() =>
+                  exportStudyNotesMarkdown({
+                    certSlug: activeCertificationSlug,
+                    readingRecords,
+                    bookNotes,
+                  })
+                }
+              >
+                📝 Export Study Notes (.MD)
+              </button>
+            </div>
+            <div className="settings-row">
+              <div className="settings-label">
+                <h4>Printable Readiness Transcript</h4>
+                <p>Generate a print-ready PDF Readiness Transcript &amp; Achievement Certificate</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  const currentCert = certifications.find((c) => c.slug === activeCertificationSlug);
+                  const completedBook = Object.values(readingRecords).filter(
+                    (r) => r.certificationSlug === activeCertificationSlug && r.status === 'completed'
+                  ).length;
+                  openPrintableReadinessTranscript({
+                    learnerName: user?.full_name || user?.email || 'AnoxPass Scholar',
+                    certName: currentCert?.name || activeCertificationSlug.toUpperCase(),
+                    compositeScore: overallAccuracy,
+                    tierLabel: overallAccuracy >= 80 ? 'Exam Ready' : 'In Progress',
+                    predictedScaledScore: predictedScaledScore ?? 0,
+                    overallAccuracy,
+                    totalAttempted,
+                    completedBookSections: completedBook,
+                    totalBookSections: Math.max(completedBook, offlineStatus.cachedChapters * 8),
+                  });
+                }}
+              >
+                🎓 Print Readiness Transcript
+              </button>
+            </div>
             <div className="settings-row">
               <div className="settings-label">
                 <h4>Export Progress Backup</h4>

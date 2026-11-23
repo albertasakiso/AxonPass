@@ -197,3 +197,69 @@ export function getDueCards(cards: FSRSCard[], now: Date = new Date()): FSRSCard
     .filter((c) => new Date(c.due).getTime() <= nowMs)
     .sort((a, b) => new Date(a.due).getTime() - new Date(b.due).getTime());
 }
+
+export interface RetentionForecastDay {
+  dayLabel: string;
+  dueCount: number;
+  avgRetrievabilityPct: number;
+}
+
+/**
+ * Predicts upcoming 7-day FSRS review load and average memory retrievability.
+ */
+export function forecastRetention7Days(
+  cards: FSRSCard[],
+  now: Date = new Date()
+): RetentionForecastDay[] {
+  const result: RetentionForecastDay[] = [];
+  for (let offset = 0; offset < 7; offset++) {
+    const dayDate = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
+    const dayEndMs = new Date(dayDate);
+    dayEndMs.setHours(23, 59, 59, 999);
+    const dayStartMs = new Date(dayDate);
+    dayStartMs.setHours(0, 0, 0, 0);
+
+    const dueCount = cards.filter((c) => {
+      const dueMs = new Date(c.due).getTime();
+      return offset === 0 ? dueMs <= dayEndMs.getTime() : dueMs >= dayStartMs.getTime() && dueMs <= dayEndMs.getTime();
+    }).length;
+
+    const activeCards = cards.filter((c) => c.stability > 0);
+    const avgR =
+      activeCards.length > 0
+        ? Math.round(
+            (activeCards.reduce((sum, c) => sum + getRetrievability(c, dayDate), 0) / activeCards.length) * 100
+          )
+        : 100;
+
+    result.push({
+      dayLabel: offset === 0 ? 'Today' : dayDate.toLocaleDateString(undefined, { weekday: 'short' }),
+      dueCount,
+      avgRetrievabilityPct: avgR,
+    });
+  }
+  return result;
+}
+
+/**
+ * Formats FSRS cards as RFC-compliant CSV importable into Anki (supports {{c1::...}} cloze).
+ */
+export function exportFsrsCardsToAnkiCsv(cards: FSRSCard[]): string {
+  const escapeCsv = (val: string) => `"${(val || '').replace(/"/g, '""')}"`;
+  const header = 'Front,Back,Tags';
+  const rows = cards.map((c) =>
+    [escapeCsv(c.front), escapeCsv(c.back), escapeCsv((c.tags || []).join(' '))].join(',')
+  );
+  return [header, ...rows].join('\n');
+}
+
+export function downloadAnkiCsv(cards: FSRSCard[], filename = 'anoxpass_fsrs_anki_deck.csv'): void {
+  const csv = exportFsrsCardsToAnkiCsv(cards);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

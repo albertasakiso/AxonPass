@@ -548,6 +548,53 @@ export default function PracticePage() {
           </button>
         </div>
 
+        {/* Card 5b: Real-Time IRT CAT Simulator */}
+        <div className="practice-mode-card">
+          <div>
+            <div className="practice-icon-box" style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.35)', color: '#059669' }}>
+              📐
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <span className="badge badge-success" style={{ fontSize: '10px', textTransform: 'uppercase' }}>
+                2PL IRT Adaptive
+              </span>
+            </div>
+            <h3 className="practice-card-title">Adaptive CAT Exam Simulator</h3>
+            <p className="practice-card-desc">
+              Real-time θ estimation selecting maximum-information items with variable-length 95% confidence stopping rules and θ trajectory chart.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/cat')}
+            className="btn btn-primary"
+            style={{ width: '100%' }}
+          >
+            Launch Adaptive CAT ➔
+          </button>
+        </div>
+
+        {/* Card 5c: Interactive PBQ Labs */}
+        <div className="practice-mode-card">
+          <div>
+            <div className="practice-icon-box" style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.35)', color: '#d97706' }}>
+              🧪
+            </div>
+            <h3 className="practice-card-title">Interactive PBQ &amp; Labs</h3>
+            <p className="practice-card-desc">
+              Hands-on Firewall ACL rule ordering, Zero Trust control mapping, forensics order of volatility, quantitative ALE math, and FIFA fee caps.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/pbq')}
+            className="btn btn-secondary"
+            style={{ width: '100%' }}
+          >
+            Open PBQ Simulator ➔
+          </button>
+        </div>
+
         {/* Card 6: Targeted Topic Drill */}
         <div className="practice-mode-card">
           <div>

@@ -37,6 +37,7 @@ class SpeechEngine {
   private onSentenceChangeCallbacks: Set<SentenceCallback> = new Set();
   private onStateChangeCallbacks: Set<StateCallback> = new Set();
   private keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+  private remoteAudio: HTMLAudioElement | null = null;
   private trackTitle: string = 'AxonPass Read Aloud';
   private trackChapter: string = 'Study Material';
 
@@ -231,10 +232,71 @@ class SpeechEngine {
       return;
     }
 
-    // Cancel any previous speech
+    // Cancel any previous speech or remote audio
     this.synth.cancel();
+    if (this.remoteAudio) {
+      this.remoteAudio.pause();
+      this.remoteAudio = null;
+    }
 
     const sentence = this.sentences[this.currentIndex];
+    const localTtsEndpoint =
+      typeof window !== 'undefined' ? (localStorage.getItem('anoxpass_local_tts_url') || '').trim() : '';
+
+    if (localTtsEndpoint) {
+      void this.speakWithLocalNeuralTts(localTtsEndpoint, sentence);
+      return;
+    }
+
+    this.speakViaWebSpeech(sentence);
+  }
+
+  private async speakWithLocalNeuralTts(endpointUrl: string, sentence: string): Promise<void> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'kokoro', voice: 'af_heart', input: sentence, speed: this.rate }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      if (!this.isPlaying || this.isPaused) return;
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      audio.playbackRate = this.rate;
+      this.remoteAudio = audio;
+      this.updateMediaSession();
+      this.notifySentence(this.currentIndex, sentence);
+      this.notifyState();
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        if (this.isPlaying && !this.isPaused) {
+          if (this.currentIndex < this.sentences.length - 1) {
+            this.currentIndex++;
+            this.speakCurrent();
+          } else {
+            this.stop();
+          }
+        }
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        this.speakViaWebSpeech(sentence);
+      };
+      await audio.play();
+    } catch {
+      if (this.isPlaying && !this.isPaused) {
+        this.speakViaWebSpeech(sentence);
+      }
+    }
+  }
+
+  private speakViaWebSpeech(sentence: string): void {
+    if (!this.synth) return;
     this.utterance = new SpeechSynthesisUtterance(sentence);
     this.utterance.rate = this.rate;
 
@@ -290,6 +352,7 @@ class SpeechEngine {
   public pause(): void {
     if (!this.synth || !this.isPlaying) return;
     this.synth.pause();
+    this.remoteAudio?.pause();
     this.isPaused = true;
     this.stopKeepAlive();
     this.updateMediaSession();
@@ -299,7 +362,11 @@ class SpeechEngine {
   public resume(): void {
     if (!this.synth) return;
     if (this.isPaused) {
-      this.synth.resume();
+      if (this.remoteAudio) {
+        void this.remoteAudio.play();
+      } else {
+        this.synth.resume();
+      }
       this.isPaused = false;
       this.startKeepAlive();
       this.updateMediaSession();
@@ -312,6 +379,10 @@ class SpeechEngine {
   public stop(): void {
     if (!this.synth) return;
     this.synth.cancel();
+    if (this.remoteAudio) {
+      this.remoteAudio.pause();
+      this.remoteAudio = null;
+    }
     this.isPlaying = false;
     this.isPaused = false;
     this.currentIndex = 0;

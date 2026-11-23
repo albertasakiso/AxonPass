@@ -18,6 +18,7 @@ import type {
 import { db, enqueueSync } from '../lib/db';
 import { advanceBox, resetBox, createInitialProgress } from '../lib/leitner';
 import { useAuthStore } from './authStore';
+import { useAcademyProgressStore } from './academyProgressStore';
 
 interface QuizState {
   // Session info
@@ -260,6 +261,25 @@ export const useQuizStore = create<QuizState>((set, get) => ({
 
       await db.userProgress.put(updatedProgress);
       await enqueueSync('user_progress', updatedProgress.id, 'update', updatedProgress as any, clientEventId);
+
+      // Automatically bridge missed MCQs into the unified FSRS review queue
+      if (!isCorrect) {
+        const keyMap: Record<'A' | 'B' | 'C' | 'D', string> = {
+          A: currentQ.option_a,
+          B: currentQ.option_b,
+          C: currentQ.option_c,
+          D: currentQ.option_d,
+        };
+        const correctTxt = keyMap[currentQ.correct_answer] || currentQ.correct_answer;
+        useAcademyProgressStore.getState().addFsrsCard({
+          id: `mcq-${currentQ.id}`,
+          sourceType: 'certification',
+          sourceId: currentQ.certification_id,
+          front: currentQ.stem,
+          back: `Correct [${currentQ.correct_answer}]: ${correctTxt}\n\n${currentQ.rationale || ''}`.trim(),
+          tags: ['Missed MCQ', ...(currentQ.tags || []).slice(0, 3)],
+        });
+      }
     } catch (e) {
       console.error('Failed to update local Leitner progress:', e);
     }

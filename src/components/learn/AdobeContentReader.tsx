@@ -14,197 +14,7 @@ import {
   type SpeechPlaybackState,
   type SpeechVoiceOption,
 } from '../../lib/audio/speechEngine';
-
-export interface ParsedSentence {
-  index: number;
-  raw: string;
-  cleanSpeech: string;
-}
-
-export interface ParsedBlock {
-  type: 'heading' | 'paragraph' | 'list' | 'blockquote' | 'code' | 'table' | 'divider';
-  headingLevel?: number;
-  raw: string;
-  sentences: ParsedSentence[];
-}
-
-/**
- * Segment raw markdown into structured blocks and discrete sentences for
- * synchronized audio speech synthesis and line-by-line visual tracking.
- */
-export function segmentDocumentForSpeech(markdown: string): {
-  blocks: ParsedBlock[];
-  allSentences: ParsedSentence[];
-} {
-  if (!markdown) return { blocks: [], allSentences: [] };
-
-  const lines = markdown.split(/\r?\n/);
-  const blocks: ParsedBlock[] = [];
-  let currentBlockLines: string[] = [];
-  let currentType: 'paragraph' | 'list' | 'blockquote' | 'code' | 'table' = 'paragraph';
-  let inCodeBlock = false;
-
-  const flushBlock = () => {
-    if (currentBlockLines.length === 0) return;
-    const rawText = currentBlockLines.join('\n');
-    blocks.push({ type: currentType, raw: rawText, sentences: [] });
-    currentBlockLines = [];
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    // Handle code blocks
-    if (trimmed.startsWith('```')) {
-      if (inCodeBlock) {
-        currentBlockLines.push(line);
-        flushBlock();
-        inCodeBlock = false;
-        currentType = 'paragraph';
-        continue;
-      } else {
-        flushBlock();
-        inCodeBlock = true;
-        currentType = 'code';
-        currentBlockLines.push(line);
-        continue;
-      }
-    }
-
-    if (inCodeBlock) {
-      currentBlockLines.push(line);
-      continue;
-    }
-
-    // Blank lines delimit blocks
-    if (!trimmed) {
-      flushBlock();
-      currentType = 'paragraph';
-      continue;
-    }
-
-    // Horizontal rules
-    if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
-      flushBlock();
-      blocks.push({ type: 'divider', raw: trimmed, sentences: [] });
-      currentType = 'paragraph';
-      continue;
-    }
-
-    // Headings (# .. ######)
-    const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
-    if (headingMatch) {
-      flushBlock();
-      blocks.push({
-        type: 'heading',
-        headingLevel: headingMatch[1].length,
-        raw: trimmed,
-        sentences: [],
-      });
-      currentType = 'paragraph';
-      continue;
-    }
-
-    // Blockquotes (>)
-    if (trimmed.startsWith('>')) {
-      if (currentType !== 'blockquote') {
-        flushBlock();
-        currentType = 'blockquote';
-      }
-      currentBlockLines.push(line);
-      continue;
-    }
-
-    // Markdown Pipe Tables
-    if (trimmed.startsWith('|') && trimmed.includes('|')) {
-      if (currentType !== 'table') {
-        flushBlock();
-        currentType = 'table';
-      }
-      currentBlockLines.push(line);
-      continue;
-    }
-
-    // Bullet lists (- , * , + , 1. )
-    if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('+ ') || /^\d+\.\s/.test(trimmed)) {
-      if (currentType !== 'list') {
-        flushBlock();
-        currentType = 'list';
-      }
-      currentBlockLines.push(line);
-      continue;
-    }
-
-    // Regular paragraph continuation
-    if (currentType !== 'paragraph') {
-      flushBlock();
-      currentType = 'paragraph';
-    }
-    currentBlockLines.push(line);
-  }
-
-  flushBlock();
-
-  // Segment each block into sentences
-  const allSentences: ParsedSentence[] = [];
-  let globalIndex = 0;
-
-  for (const block of blocks) {
-    if (block.type === 'divider' || block.type === 'code' || block.type === 'table') {
-      continue;
-    }
-
-    if (block.type === 'heading') {
-      const headingClean = block.raw.replace(/^#{1,6}\s+/, '').trim();
-      const sentence: ParsedSentence = {
-        index: globalIndex++,
-        raw: block.raw.replace(/^#{1,6}\s+/, ''),
-        cleanSpeech: headingClean + '.',
-      };
-      block.sentences = [sentence];
-      allSentences.push(sentence);
-      continue;
-    }
-
-    if (block.type === 'list') {
-      const listLines = block.raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
-      for (const line of listLines) {
-        const itemClean = line.replace(/^[-*+]\s+|\d+\.\s+/, '').trim();
-        const sentence: ParsedSentence = {
-          index: globalIndex++,
-          raw: line,
-          cleanSpeech: itemClean.replace(/[*_`]/g, '') + '.',
-        };
-        block.sentences.push(sentence);
-        allSentences.push(sentence);
-      }
-      continue;
-    }
-
-    // Paragraph or blockquote: split by sentence punctuation boundary (. ! ?)
-    const regex = /(?<=[.!?])\s+(?=[A-Z0-9*#_`"'(])/g;
-    const splitParts = block.raw.split(regex).map((s) => s.trim()).filter(Boolean);
-
-    for (const part of splitParts) {
-      const clean = part
-        .replace(/^>\s+/, '')
-        .replace(/[*_`#]/g, '')
-        .replace(/\[([^\]]+)\]\(.*?\)/g, '$1')
-        .trim();
-
-      const sentence: ParsedSentence = {
-        index: globalIndex++,
-        raw: part,
-        cleanSpeech: clean,
-      };
-      block.sentences.push(sentence);
-      allSentences.push(sentence);
-    }
-  }
-
-  return { blocks, allSentences };
-}
+import { segmentDocumentForSpeech } from '../../lib/audio/speechSegmenter';
 
 export interface AdobeContentReaderProps {
   contentMarkdown: string;
@@ -244,6 +54,43 @@ export default function AdobeContentReader({
   const [autoAdvanceChapter, setAutoAdvanceChapter] = useState(true);
   const [selectedText, setSelectedText] = useState('');
   const [selectionFeedback, setSelectionFeedback] = useState<string | null>(null);
+  const [sleepMode, setSleepMode] = useState<'off' | 'end' | 15 | 30 | 60>('off');
+  const [sleepSecondsLeft, setSleepSecondsLeft] = useState<number>(0);
+
+  const bookmarkKey = `anoxpass_audio_bmarks_v1_${bookTitle || 'book'}_${chapterTitle || 'ch'}`;
+  const [audioBookmarks, setAudioBookmarks] = useState<Array<{ sentenceIndex: number; label: string }>>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return JSON.parse(localStorage.getItem(bookmarkKey) || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      setAudioBookmarks(JSON.parse(localStorage.getItem(bookmarkKey) || '[]'));
+    } catch {
+      setAudioBookmarks([]);
+    }
+  }, [bookmarkKey]);
+
+  // Sleep Timer Countdown
+  useEffect(() => {
+    if (typeof sleepMode !== 'number' || !playbackState.isPlaying || playbackState.isPaused) return;
+    const timer = window.setInterval(() => {
+      setSleepSecondsLeft((prev) => {
+        if (prev <= 1) {
+          speechEngine.pause();
+          setSleepMode('off');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [sleepMode, playbackState.isPlaying, playbackState.isPaused]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -278,9 +125,10 @@ export default function AdobeContentReader({
         setActiveSentenceIndex(null);
       }
 
-      // Check auto-advance to next chapter when speech ends
+      // Check auto-advance to next chapter when speech ends (disabled when Sleep = End of Section)
       if (
         autoAdvanceChapter &&
+        sleepMode !== 'end' &&
         !s.isPlaying &&
         s.totalSentences > 0 &&
         s.currentIndex >= s.totalSentences - 1 &&
@@ -309,7 +157,7 @@ export default function AdobeContentReader({
       unsubState();
       unsubSentence();
     };
-  }, [followAlong, autoAdvanceChapter, onNextChapter, onSentenceProgress]);
+  }, [followAlong, autoAdvanceChapter, sleepMode, onNextChapter, onSentenceProgress]);
 
   // Capture text selection for Kindle-style Highlight / Flashcard / Tutor popover
   const handleMouseUpSelection = () => {
@@ -734,6 +582,80 @@ export default function AdobeContentReader({
                   : `0/${allSentences.length}`}
               </span>
             </div>
+          </div>
+
+          {/* Commute Controls: Sleep Timer & Audio Bookmarks */}
+          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <label style={{ fontSize: '11px', color: 'var(--color-ink-muted)', fontWeight: 600 }}>
+                ⏱ Sleep:
+              </label>
+              <select
+                className="select select-xs"
+                style={{ fontSize: '11px' }}
+                value={String(sleepMode)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'off' || v === 'end') {
+                    setSleepMode(v);
+                    setSleepSecondsLeft(0);
+                  } else {
+                    const mins = Number(v) as 15 | 30 | 60;
+                    setSleepMode(mins);
+                    setSleepSecondsLeft(mins * 60);
+                  }
+                }}
+              >
+                <option value="off">Off</option>
+                <option value="15">15 min</option>
+                <option value="30">30 min</option>
+                <option value="60">60 min</option>
+                <option value="end">End of Section</option>
+              </select>
+              {typeof sleepMode === 'number' && sleepSecondsLeft > 0 && (
+                <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}>
+                  {Math.floor(sleepSecondsLeft / 60)}:{String(sleepSecondsLeft % 60).padStart(2, '0')}
+                </span>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-xs btn-secondary"
+                onClick={() => {
+                  const idx = activeSentenceIndex ?? playbackState.currentIndex ?? 0;
+                  const snippet = (allSentences[idx]?.cleanSpeech || `Sentence ${idx + 1}`).slice(0, 32);
+                  const next = [
+                    ...audioBookmarks.filter((b) => b.sentenceIndex !== idx),
+                    { sentenceIndex: idx, label: `#${idx + 1} · ${snippet}` },
+                  ].slice(-6);
+                  setAudioBookmarks(next);
+                  try {
+                    localStorage.setItem(bookmarkKey, JSON.stringify(next));
+                  } catch {
+                    // ignore storage quota
+                  }
+                }}
+              >
+                🔖 Bookmark Audio
+              </button>
+            </div>
+
+            {audioBookmarks.length > 0 && (
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {audioBookmarks.map((bm) => (
+                  <button
+                    key={bm.sentenceIndex}
+                    type="button"
+                    className="btn btn-xs btn-ghost"
+                    style={{ fontSize: '10px', border: '1px solid var(--border-color)' }}
+                    onClick={() => handleSentenceClick(bm.sentenceIndex)}
+                    title="Jump audio to bookmark"
+                  >
+                    ▶ {bm.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Live Spoken Sentence Subtitle Box */}

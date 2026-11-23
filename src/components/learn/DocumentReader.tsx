@@ -8,54 +8,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLessonProgressStore } from '../../stores/lessonProgressStore';
 import { supabase } from '../../lib/supabase';
 import type { StudyMaterial, DocumentIngestionRecord, Topic, Subtopic, Domain } from '../../types';
+import { formatCleanDocumentTitle } from '../../lib/documentTitle';
 import AdobeContentReader from './AdobeContentReader';
-
-/**
- * Format raw storage filenames into clean, human-friendly titles.
- * Example: "CISA_Review_Manual_27th_Edition_English.part_1" -> "CISA Review Manual (27th Edition) — Part 1"
- */
-export function formatCleanDocumentTitle(fileName: string): string {
-  if (!fileName) return 'Study Material';
-  let clean = fileName;
-
-  // Detect .part_N
-  let partSuffix = '';
-  const partMatch = clean.match(/\.part_(\d+)$/i);
-  if (partMatch) {
-    partSuffix = ` — Part ${partMatch[1]}`;
-    clean = clean.replace(/\.part_\d+$/i, '');
-  }
-
-  // Remove common extensions (.pdf, .epub, .docx, .txt)
-  clean = clean.replace(/\.(pdf|epub|docx|txt|doc|md)$/i, '');
-
-  // Remove timestamp or uuid prefixes like 1738291823_ or uuid_
-  clean = clean.replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[_-]?/i, '');
-  clean = clean.replace(/^\d{10,}[_-]?/, '');
-
-  // Replace underscores and multiple dashes with spaces
-  clean = clean.replace(/[_-]+/g, ' ').trim();
-
-  // Acronym standardizations
-  const acronyms = [
-    'CISA', 'CISSP', 'ISC2', 'CC', 'AWS', 'SAA', 'C03', 'NIST', 'CRISC',
-    'CISM', 'GRC', 'FIFA', 'SOC', 'ITAF', 'ISO', 'IEC', 'CSF', 'RMF',
-    'PMP', 'BIA', 'BCP', 'DRP', 'CIA', 'IAM', 'RBAC', 'AI', 'COBIT',
-    'IRP', 'DR', 'BC', 'CBK', 'DLP', 'CYSA', 'CCSP', 'CGEIT'
-  ];
-
-  const words = clean.split(' ').map((w) => {
-    const upper = w.toUpperCase();
-    if (acronyms.includes(upper)) return upper;
-    if (w.length <= 3 && !['and', 'for', 'the', 'of', 'in', 'to', 'on', 'at', 'by', 'vs', 'with'].includes(w.toLowerCase())) {
-      return upper;
-    }
-    // Capitalize first letter
-    return w.charAt(0).toUpperCase() + w.slice(1);
-  });
-
-  return words.join(' ') + partSuffix;
-}
 
 interface DocumentReaderProps {
   materials: StudyMaterial[];

@@ -4,9 +4,12 @@ import { useAuthStore } from '../stores/authStore';
 import { useProgressStore } from '../stores/progressStore';
 import { useLessonProgressStore } from '../stores/lessonProgressStore';
 import { useReadingProgressStore } from '../stores/readingProgressStore';
+import { useAcademyProgressStore } from '../stores/academyProgressStore';
 import { useQuizStore } from '../stores/quizStore';
 import { supabase } from '../lib/supabase';
 import { CompositeReadinessGauge } from '../components/insights/CompositeReadinessGauge';
+import DailyMissionCard from '../components/home/DailyMissionCard';
+import { buildDailyStudyMission } from '../lib/studyPlanner';
 import {
   calculateCompositeReadiness,
   launchDiagnosticExam,
@@ -40,6 +43,7 @@ export default function HomePage() {
   } = useProgressStore();
 
   const { completedSubtopicIds } = useLessonProgressStore();
+  const fsrsDueCount = useAcademyProgressStore((s) => s.getDueFsrsCards().length);
   const readingRecords = useReadingProgressStore((s) => s.records);
   const textbookCompletedSections = useMemo(
     () =>
@@ -124,6 +128,27 @@ export default function HomePage() {
     textbookTotalSections,
     textbookCompletedSections,
     targetExamDate,
+  ]);
+
+  const dailyMission = useMemo(() => {
+    const weakest = [...domainSummaries].sort((a, b) => a.accuracy - b.accuracy)[0];
+    return buildDailyStudyMission({
+      certSlug: activeCertificationSlug,
+      certName,
+      targetExamDate,
+      remainingBookSections: Math.max(0, textbookTotalSections - textbookCompletedSections),
+      fsrsDueCount,
+      weakDomainName: weakest?.name || null,
+      weakDomainId: weakest?.domainId || null,
+    });
+  }, [
+    activeCertificationSlug,
+    certName,
+    targetExamDate,
+    textbookTotalSections,
+    textbookCompletedSections,
+    fsrsDueCount,
+    domainSummaries,
   ]);
 
   // Launch 20Q Adaptive Baseline Diagnostic
@@ -235,6 +260,19 @@ export default function HomePage() {
           </button>
         </div>
       )}
+
+      {/* 2b. Adaptive Daily Study Mission Card */}
+      <DailyMissionCard
+        certName={certName}
+        mission={dailyMission}
+        onLaunchWeakDrill={() => {
+          if (dailyMission.weakDomainId) {
+            void handleLaunchDomainDrill(dailyMission.weakDomainId);
+          } else {
+            navigate('/practice');
+          }
+        }}
+      />
 
       {/* 3. Hero Journey Card (Resume Learning) */}
       <div

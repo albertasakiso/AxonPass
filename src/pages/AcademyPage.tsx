@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router-dom';
 import { ACADEMY_TRACKS } from '../data';
 import type { AcademyId, AcademyLesson, FSRSRating } from '../types/academy';
 import { useAcademyProgressStore } from '../stores/academyProgressStore';
+import { downloadAnkiCsv, forecastRetention7Days } from '../lib/fsrs';
 import { analyzeSpeechLocally, type LocalCoachMode } from '../lib/ai/localCoachService';
 import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
 import AdobeContentReader from '../components/learn/AdobeContentReader';
@@ -27,6 +28,10 @@ export default function AcademyPage() {
 
   // FSRS review state
   const [showAnswer, setShowAnswer] = useState(false);
+  const [fsrsFilter, setFsrsFilter] = useState<'all' | 'mcq' | 'certification' | 'academy'>('all');
+  const [clozeFront, setClozeFront] = useState('');
+  const [clozeBack, setClozeBack] = useState('');
+  const [clozeTag, setClozeTag] = useState('custom');
 
   // AI Coach Drawer
   const [coachOpen, setCoachOpen] = useState(false);
@@ -64,7 +69,14 @@ export default function AcademyPage() {
   );
 
   const dueCards = getDueFsrsCards();
-  const activeCard = dueCards[0] || null;
+  const filteredDueCards = useMemo(() => {
+    if (fsrsFilter === 'all') return dueCards;
+    if (fsrsFilter === 'mcq') return dueCards.filter((c) => c.id.startsWith('mcq-') || c.tags?.includes('Missed MCQ'));
+    if (fsrsFilter === 'certification') return dueCards.filter((c) => c.sourceType === 'certification');
+    return dueCards.filter((c) => c.sourceType === 'academy' || c.sourceType === 'book');
+  }, [dueCards, fsrsFilter]);
+  const activeCard = filteredDueCards[0] || null;
+  const retentionForecast = useMemo(() => forecastRetention7Days(fsrsCards), [fsrsCards]);
 
   const speechMetrics = useMemo(() => {
     if (activeTab !== 'public-speaking' || !drillResponse.trim()) return null;
@@ -167,13 +179,68 @@ export default function AcademyPage() {
 
       {/* FSRS Review Queue Tab */}
       {activeTab === 'fsrs' ? (
-        <section>
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+          {/* Unified FSRS Filter + 7-Day Forecast + Anki Export Toolbar */}
+          <div className="card" style={{ padding: 'var(--space-4)', display: 'grid', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {([
+                  { id: 'all', label: `All Due (${dueCards.length})` },
+                  { id: 'mcq', label: 'Missed MCQs' },
+                  { id: 'certification', label: 'Textbooks & Certs' },
+                  { id: 'academy', label: 'Academies & Books' },
+                ] as const).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`btn btn-xs ${fsrsFilter === f.id ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => {
+                      setFsrsFilter(f.id);
+                      setShowAnswer(false);
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="btn btn-xs btn-secondary"
+                disabled={fsrsCards.length === 0}
+                onClick={() => downloadAnkiCsv(fsrsCards)}
+              >
+                📥 Export Anki Deck ({fsrsCards.length} Cards .CSV)
+              </button>
+            </div>
+
+            {/* 7-Day Retention Forecast Strip */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: '6px' }}>
+              {retentionForecast.map((d) => (
+                <div
+                  key={d.dayLabel}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    background: 'var(--color-bg-subtle)',
+                    border: '1px solid var(--border-color)',
+                    fontSize: '11px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>{d.dayLabel}</div>
+                  <div style={{ color: 'var(--color-primary)' }}>{d.dueCount} due</div>
+                  <div style={{ color: 'var(--color-ink-muted)', fontSize: '10px' }}>{d.avgRetrievabilityPct}% R</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {activeCard ? (
             <div className="fsrs-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', color: 'var(--color-ink-muted)' }}>
                 <span>Source: {activeCard.sourceType.toUpperCase()}</span>
                 <span>
-                  {dueCards.length} due · {fsrsCards.length} total cards
+                  {filteredDueCards.length} due in view · {fsrsCards.length} total cards
                 </span>
               </div>
               <h2 style={{ margin: 'var(--space-2) 0', fontSize: 'var(--text-xl)' }}>
@@ -226,11 +293,58 @@ export default function AcademyPage() {
               <div style={{ fontSize: '2.5rem' }}>🎉</div>
               <h2 style={{ margin: 0 }}>All Caught Up!</h2>
               <p style={{ color: 'var(--color-ink-muted)', margin: 0 }}>
-                You have 0 FSRS cards due right now ({fsrsCards.length} cards in your deck). Add new
-                cards from Certification Paths, Academy Lessons, or the Leadership Books Hub.
+                You have 0 FSRS cards due in this view ({fsrsCards.length} total cards in your deck). Missed MCQs, textbook highlights, and Cloze cards automatically sync here.
               </p>
             </div>
           )}
+
+          {/* Quick Cloze Flashcard Creator */}
+          <div className="card" style={{ padding: 'var(--space-4)', display: 'grid', gap: '8px' }}>
+            <strong style={{ fontSize: 'var(--text-sm)' }}>➕ Quick Cloze / Active Recall Card</strong>
+            <input
+              type="text"
+              className="input"
+              placeholder="Front / Cloze prompt (e.g. Under ITAF 4th Ed, {{c1::Standards}} are mandatory requirements)"
+              value={clozeFront}
+              onChange={(e) => setClozeFront(e.target.value)}
+            />
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                className="input"
+                style={{ flex: 2, minWidth: '200px' }}
+                placeholder="Back answer / explanation..."
+                value={clozeBack}
+                onChange={(e) => setClozeBack(e.target.value)}
+              />
+              <input
+                type="text"
+                className="input"
+                style={{ flex: 1, minWidth: '120px' }}
+                placeholder="Tag (e.g. CISA)"
+                value={clozeTag}
+                onChange={(e) => setClozeTag(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  if (!clozeFront.trim() || !clozeBack.trim()) return;
+                  addFsrsCard({
+                    sourceType: 'certification',
+                    sourceId: 'custom-cloze',
+                    front: clozeFront.trim(),
+                    back: clozeBack.trim(),
+                    tags: ['Cloze', clozeTag.trim() || 'custom'],
+                  });
+                  setClozeFront('');
+                  setClozeBack('');
+                }}
+              >
+                Add Card
+              </button>
+            </div>
+          </div>
         </section>
       ) : (
         <>
