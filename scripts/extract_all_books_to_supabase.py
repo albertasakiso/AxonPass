@@ -424,6 +424,47 @@ def extract_epub_book(
             )
             book.chapters.append(chapter)
 
+    # Merge micro-chapters (e.g. CISSP Fast Track 68 card-sized XHTML files) into balanced modules
+    if len(book.chapters) > 35:
+        avg_words = sum(c.word_count for c in book.chapters) / max(1, len(book.chapters))
+        if avg_words < 600:
+            batch_sz = max(5, (len(book.chapters) + 9) // 10)
+            merged_chapters: List[ExtractedChapter] = []
+            for m_idx in range(0, len(book.chapters), batch_sz):
+                grp = book.chapters[m_idx : m_idx + batch_sz]
+                mod_num = len(merged_chapters) + 1
+                combined_secs: List[ExtractedSection] = []
+                for sub_i, ch in enumerate(grp, 1):
+                    for s in ch.sections:
+                        combined_secs.append(
+                            ExtractedSection(
+                                section_code=f"{mod_num}.{sub_i}",
+                                title=s.title,
+                                heading_level=s.heading_level,
+                                content_markdown=s.content_markdown,
+                                key_terms=s.key_terms,
+                                exam_tips=s.exam_tips,
+                                page_start=s.page_start,
+                                page_end=s.page_end,
+                            )
+                        )
+                tot_wc = sum(word_count(s.content_markdown) for s in combined_secs)
+                dom_num = next((c.domain_number for c in grp if c.domain_number is not None), None)
+                lead_title = grp[0].title[:120]
+                merged_chapters.append(
+                    ExtractedChapter(
+                        chapter_number=mod_num,
+                        title=f"Module {mod_num}: {lead_title} ({len(grp)} Topics)"[:240],
+                        domain_number=dom_num,
+                        part_label=f"Module {mod_num}",
+                        summary=grp[0].summary,
+                        word_count=tot_wc,
+                        est_read_minutes=max(5, round(tot_wc / 180)),
+                        sections=combined_secs,
+                    )
+                )
+            book.chapters = merged_chapters
+
     return book
 
 
@@ -1290,6 +1331,7 @@ def sync_books_to_supabase(
     max_mb: float,
     append_only: bool = False,
     max_db_mb: float = 280.0,
+    targeted_replace: bool = False,
 ) -> None:
     conn = get_pg_connection()
     conn.autocommit = False
@@ -1302,6 +1344,13 @@ def sync_books_to_supabase(
     if append_only:
         cur.execute("SELECT content_hash FROM public.textbooks WHERE content_hash IS NOT NULL;")
         existing_hashes = {row[0] for row in cur.fetchall()}
+    elif targeted_replace:
+        for b in books:
+            cur.execute(
+                "DELETE FROM public.textbooks WHERE certification_slug = %s AND title = %s;",
+                (b.cert_slug, b.title[:240]),
+            )
+        conn.commit()
     else:
         # Clear existing textbooks for target certs if re-running so chapters stay crisp and duplicate-free
         target_slugs = sorted({b.cert_slug for b in books})
@@ -1470,6 +1519,7 @@ def main():
     parser.add_argument("--extra-only", action="store_true", help="Extract only remaining distinct non-duplicate books beyond the primary 24")
     parser.add_argument("--include-extra", action="store_true", help="Extract both primary 24 books and all remaining distinct non-duplicate books")
     parser.add_argument("--append-only", action="store_true", help="Skip existing textbooks by content_hash instead of deleting target cert rows")
+    parser.add_argument("--book-filter", default="", help="Only extract/replace books whose title contains this substring (case-insensitive)")
     args = parser.parse_args()
 
     if args.extra_only:
@@ -1478,6 +1528,10 @@ def main():
         books = build_all_books(args.cert) + build_extra_books(args.cert)
     else:
         books = build_all_books(args.cert)
+
+    if args.book_filter:
+        needle = args.book_filter.lower()
+        books = [b for b in books if needle in b.title.lower()]
 
     print(f"\n{'CERT':<25} {'BOOK':<46} {'CH':>3} {'SEC':>4} {'WORDS':>9} {'RAW_MB':>7}")
     print("-" * 100)
@@ -1502,7 +1556,13 @@ def main():
     print(f"TOTAL: certs={len(certs_seen)}/16 books={len(books)} chapters={grand_chs} sections={grand_secs} words={grand_words:,} raw_mb={grand_bytes/(1024*1024):.2f}MB (est PG TOAST: ~{grand_bytes/(1024*1024)/2.4:.1f}MB)")
 
     if args.apply:
-        sync_books_to_supabase(books, max_mb=args.max_mb, append_only=args.append_only, max_db_mb=args.max_db_mb)
+        sync_books_to_supabase(
+            books,
+            max_mb=args.max_mb,
+            append_only=args.append_only,
+            max_db_mb=args.max_db_mb,
+            targeted_replace=bool(args.book_filter),
+        )
 
 
 if __name__ == "__main__":

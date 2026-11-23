@@ -4,7 +4,7 @@
    =================================================================== */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { NODES_BY_CERT, CISA_KNOWLEDGE_GRAPH } from '../../lib/ml/knowledgeGraph';
+import { fetchKnowledgeNodesForCert, resolveCertCodeForGraph } from '../../lib/ml/knowledgeGraphService';
 import type { KnowledgeNode } from '../../lib/ml/types';
 
 interface ConceptGraphExplorerProps {
@@ -14,67 +14,37 @@ interface ConceptGraphExplorerProps {
   onStartTopicQuiz?: (topicCode: string) => void;
 }
 
-function resolveCertNodes(certCode?: string, certSlug?: string): { code: string; nodes: KnowledgeNode[] } {
-  const code = (certCode || '').toUpperCase().trim();
-  const slug = (certSlug || '').toLowerCase().trim();
-
-  const aliasMap: Record<string, string> = {
-    'cisa': 'CISA',
-    'cc': 'CC',
-    'isc2-cc': 'CC',
-    'cissp': 'CISSP',
-    'cism': 'CISM',
-    'crisc': 'CRISC',
-    'ccsp': 'CCSP',
-    'cgeit': 'CGEIT',
-    'cysa': 'CYSA+',
-    'cysa+': 'CYSA+',
-    'comptia-a-plus': 'A+',
-    'a+': 'A+',
-    'aplus': 'A+',
-    'comptia-network-plus': 'NETWORK+',
-    'network+': 'NETWORK+',
-    'netplus': 'NETWORK+',
-    'fifa-agent': 'FIFA-AGENT',
-    'fifa': 'FIFA-AGENT',
-    'grc': 'GRC',
-    'gslc': 'GSLC',
-    'giac-security-leadership': 'GSLC',
-    'nist-grc': 'NIST',
-    'nist': 'NIST',
-    'aws-csaa': 'SAA-C03',
-    'saa-c03': 'SAA-C03',
-  };
-
-  if (code && NODES_BY_CERT[code]) return { code, nodes: NODES_BY_CERT[code] };
-  const mappedKey = aliasMap[slug] || aliasMap[code.toLowerCase()];
-  if (mappedKey && NODES_BY_CERT[mappedKey]) return { code: mappedKey, nodes: NODES_BY_CERT[mappedKey] };
-
-  return { code: 'CISA', nodes: CISA_KNOWLEDGE_GRAPH };
-}
-
 export const ConceptGraphExplorer: React.FC<ConceptGraphExplorerProps> = ({
   certSlug = 'cisa',
   certCode,
   certName,
   onStartTopicQuiz,
 }) => {
-  const { code: resolvedCode, nodes: certNodes } = useMemo(() => {
-    return resolveCertNodes(certCode, certSlug);
-  }, [certCode, certSlug]);
-
+  const [resolvedCode, setResolvedCode] = useState<string>(() => resolveCertCodeForGraph(certSlug || certCode));
+  const [certNodes, setCertNodes] = useState<KnowledgeNode[]>([]);
+  const [loadingNodes, setLoadingNodes] = useState<boolean>(true);
   const [selectedDomain, setSelectedDomain] = useState<number | 'all'>('all');
-  const [activeNodeId, setActiveNodeId] = useState<string>(certNodes[0]?.id || '');
+  const [activeNodeId, setActiveNodeId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Sync active node when track changes
   useEffect(() => {
-    if (certNodes.length > 0) {
-      setActiveNodeId(certNodes[0].id);
+    let active = true;
+    setLoadingNodes(true);
+    fetchKnowledgeNodesForCert(certSlug || certCode).then(({ code, nodes }) => {
+      if (!active) return;
+      setResolvedCode(code);
+      setCertNodes(nodes);
+      setActiveNodeId(nodes[0]?.id || '');
       setSelectedDomain('all');
       setSearchQuery('');
-    }
-  }, [certNodes]);
+      setLoadingNodes(false);
+    }).catch(() => {
+      if (active) setLoadingNodes(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [certCode, certSlug]);
 
   // Dynamically compute domains for this certification
   const availableDomains = useMemo(() => {
@@ -98,6 +68,14 @@ export const ConceptGraphExplorer: React.FC<ConceptGraphExplorerProps> = ({
   const activeNode = useMemo(() => {
     return certNodes.find((n) => n.id === activeNodeId) || certNodes[0] || null;
   }, [certNodes, activeNodeId]);
+
+  if (loadingNodes && certNodes.length === 0) {
+    return (
+      <div className="card" style={{ padding: 'var(--space-8)', textAlign: 'center', borderRadius: 'var(--radius-xl)' }}>
+        <p className="text-muted">Loading {resolvedCode} concept ontology from Supabase...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="card" style={{ padding: 'var(--space-6)', borderRadius: 'var(--radius-xl)' }}>

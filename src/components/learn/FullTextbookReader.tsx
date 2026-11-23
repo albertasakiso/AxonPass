@@ -10,12 +10,15 @@ import {
   fetchChapterSections,
   searchFullTextbooks,
   toDbCertSlug,
+  toCourseCertId,
   type Textbook,
   type TextbookChapter,
   type TextbookSection,
   type TextbookSectionMeta,
   type TextbookSearchHit,
 } from '../../lib/textbookService';
+import { fetchSynthesizedLessons } from '../../lib/synthesizedCloudContent';
+import type { CourseLesson } from '../../types/course';
 import { useReadingProgressStore } from '../../stores/readingProgressStore';
 import { useAcademyProgressStore } from '../../stores/academyProgressStore';
 import AdobeContentReader from './AdobeContentReader';
@@ -59,6 +62,8 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
   const [showAudio, setShowAudio] = useState(false);
   const [showNotesDrawer, setShowNotesDrawer] = useState(false);
   const [notesDraft, setNotesDraft] = useState('');
+  const [synthesizedLessons, setSynthesizedLessons] = useState<CourseLesson[]>([]);
+  const [showAiDeepDive, setShowAiDeepDive] = useState(false);
 
   // Full-book search state
   const [searchInput, setSearchInput] = useState(initialSearchQuery);
@@ -93,8 +98,9 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
     setChapterSections([]);
 
     async function load() {
-      const [toc] = await Promise.all([
+      const [toc, aiLessons] = await Promise.all([
         fetchTextbooksForCert(dbSlug),
+        fetchSynthesizedLessons(toCourseCertId(dbSlug)),
         loadForCert(dbSlug),
       ]);
       if (!active) return;
@@ -102,6 +108,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
       setTextbooks(toc.textbooks);
       setChapters(toc.chapters);
       setSectionMetas(toc.sectionMetas);
+      setSynthesizedLessons(aiLessons);
 
       if (toc.textbooks.length > 0) {
         const lastPtr = lastReadByCert[dbSlug];
@@ -654,6 +661,70 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                   <p className="callout-content" style={{ margin: 0 }}>{activeSection.exam_tips}</p>
                 </div>
               )}
+
+              {/* Cloud-Synced AI Deep Dive & Exam Traps (public.synthesized_lessons) */}
+              {synthesizedLessons.length > 0 && (() => {
+                const secKeywords = (activeSection.title + ' ' + activeChapter.title)
+                  .toLowerCase()
+                  .split(/[^a-z0-9]+/)
+                  .filter((w) => w.length > 4);
+                const matchedAi =
+                  synthesizedLessons.find((l) =>
+                    secKeywords.some((k) => (l.title + ' ' + l.summary).toLowerCase().includes(k))
+                  ) ||
+                  synthesizedLessons[(Math.max(0, (activeChapter.chapter_number || 1) - 1)) % synthesizedLessons.length];
+
+                if (!matchedAi) return null;
+                return (
+                  <div
+                    className="card"
+                    style={{
+                      padding: 'var(--space-3) var(--space-4)',
+                      marginBottom: 'var(--space-4)',
+                      backgroundColor: 'rgba(99, 102, 241, 0.06)',
+                      borderLeft: '4px solid var(--color-primary)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)' }}>
+                        🧠 AI Concept Companion: {matchedAi.title} ({synthesizedLessons.length} Cloud Units)
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-secondary"
+                        onClick={() => setShowAiDeepDive((prev) => !prev)}
+                      >
+                        {showAiDeepDive ? 'Hide AI Companion ▲' : 'Open Mental Model & Exam Traps ▼'}
+                      </button>
+                    </div>
+                    {showAiDeepDive && (
+                      <div style={{ marginTop: '10px', fontSize: 'var(--text-xs)', display: 'grid', gap: '8px' }}>
+                        <p style={{ margin: 0, lineHeight: 1.55 }}>{matchedAi.summary}</p>
+                        {matchedAi.coreConcepts?.slice(0, 2).map((cc, idx) => (
+                          <div key={idx} style={{ padding: '8px 10px', borderRadius: '6px', backgroundColor: 'var(--color-bg)', border: '1px solid var(--border-color)' }}>
+                            <strong>{cc.heading}:</strong> {cc.explanation}
+                            {cc.mentalModel && (
+                              <div style={{ marginTop: '4px', color: 'var(--color-primary)', fontStyle: 'italic' }}>
+                                Mental Model: {cc.mentalModel}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {matchedAi.examTraps && matchedAi.examTraps.length > 0 && (
+                          <div style={{ padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderLeft: '3px solid #f59e0b' }}>
+                            <strong>⚠️ Common Exam Traps:</strong>
+                            <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                              {matchedAi.examTraps.slice(0, 3).map((trap, i) => (
+                                <li key={i}>{trap}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Collapsible Highlights & Personal Notes Drawer */}
               {showNotesDrawer && sectionMetaInput && (

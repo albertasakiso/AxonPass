@@ -3,7 +3,6 @@
    Native .xlsx and .xls parser using SheetJS (xlsx)
    =================================================================== */
 
-import * as XLSX from 'xlsx';
 import type { ParsedQuestion } from '../../types';
 import type { ParseOutcome } from './csvParser';
 import { validateQuestion } from './validator';
@@ -16,9 +15,10 @@ export interface ExcelSheetData {
 }
 
 /**
- * Extract sheets and raw table data from an Excel ArrayBuffer.
+ * Extract sheets and raw table data from an Excel ArrayBuffer using dynamically loaded SheetJS.
  */
-export function inspectExcelWorkbook(arrayBuffer: ArrayBuffer): ExcelSheetData[] {
+export async function inspectExcelWorkbook(arrayBuffer: ArrayBuffer): Promise<ExcelSheetData[]> {
+  const XLSX = await import('xlsx');
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
   const results: ExcelSheetData[] = [];
 

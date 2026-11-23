@@ -149,7 +149,7 @@ export const QuestionBankManager: React.FC<QuestionBankManagerProps> = ({
     const certSlug = currentCert?.slug || 'certification';
 
     if (format === 'xlsx') {
-      exportQuestionsToExcel(data, certSlug);
+      await exportQuestionsToExcel(data, certSlug);
     } else if (format === 'csv') {
       exportQuestionsToCsv(data, `${certSlug}_questions`);
     } else {

@@ -4,15 +4,15 @@
    and confidence scoring (§7.5).
    =================================================================== */
 
-import mammoth from 'mammoth';
 import type { ParsedQuestion } from '../../types';
 import type { ParseOutcome } from './csvParser';
 import { validateQuestion } from './validator';
 
 /**
- * Parse an ArrayBuffer containing a .docx file into structured questions.
+ * Parse an ArrayBuffer containing a .docx file into structured questions using dynamic mammoth load.
  */
 export async function parseDocxQuestions(arrayBuffer: ArrayBuffer, fileName: string): Promise<ParseOutcome> {
+  const mammoth = (await import('mammoth')).default;
   const result = await mammoth.extractRawText({ arrayBuffer });
   const text = result.value;
 

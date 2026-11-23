@@ -79,11 +79,35 @@ export async function pushSyncQueue(): Promise<{ success: number; failed: number
 }
 
 /**
- * Pull all content (certifications, domains, topics, questions,
- * study materials, glossary terms, case studies) from Supabase into Dexie.
- * 
- * v3: No artificial limit on questions — pull all active questions
- * for the active certification's question bank.
+ * Paginated pull of ALL active questions for a single certification into Dexie
+ * (bypasses PostgREST's 1,000-row single-request cap cleanly).
+ */
+export async function pullQuestionsForCertification(certificationId: string): Promise<number> {
+  if (!navigator.onLine || !certificationId) return 0;
+  let offset = 0;
+  const pageSize = 1000;
+  let totalFetched = 0;
+
+  while (offset < 10000) {
+    const { data, error } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('certification_id', certificationId)
+      .eq('is_active', true)
+      .range(offset, offset + pageSize - 1);
+
+    if (error || !data || data.length === 0) break;
+    await db.questions.bulkPut(data);
+    totalFetched += data.length;
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+  return totalFetched;
+}
+
+/**
+ * Pull all lightweight metadata and the active certification's complete paginated
+ * question bank from Supabase into Dexie (removes silent 1,000-row cutoff).
  */
 export async function pullContentFromServer(): Promise<void> {
   if (!navigator.onLine) return;
@@ -104,10 +128,13 @@ export async function pullContentFromServer(): Promise<void> {
       await db.topics.bulkPut(topics);
     }
 
-    // v3: Pull ALL questions — removed the .limit(500) cap
-    const { data: questions } = await supabase.from('questions').select('*');
-    if (questions && questions.length > 0) {
-      await db.questions.bulkPut(questions);
+    // Paginate ALL questions for the active certification into Dexie
+    const activeSlug =
+      (typeof window !== 'undefined' ? localStorage.getItem('alp_active_cert') : null) || 'cisa';
+    const activeCert =
+      certs?.find((c: { slug: string; id: string }) => c.slug === activeSlug) || certs?.[0];
+    if (activeCert?.id) {
+      await pullQuestionsForCertification(activeCert.id);
     }
 
     // Pull lightweight glossary & metadata; heavy full-book chapters lazy-load on demand in textbookService

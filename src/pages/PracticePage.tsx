@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabase';
 import { calculateTimeLimit, getOfficialExamProfile } from '../lib/timer';
 import { db } from '../lib/db';
 import { launchDiagnosticExam } from '../lib/scoring/readinessGauge';
+import { fetchSynthesizedQuestions } from '../lib/synthesizedCloudContent';
+import { toCourseCertId } from '../lib/textbookService';
 import type { Certification, Domain, Topic, Question } from '../types';
 
 export default function PracticePage() {
@@ -76,7 +78,7 @@ export default function PracticePage() {
   }, [certifications, selectedCertSlug]);
 
   const handleLaunchPractice = async (
-    mode: 'custom' | 'quick' | 'exam_sim' | 'leitner_drill' | 'case_study' | 'topic_drill',
+    mode: 'custom' | 'quick' | 'exam_sim' | 'leitner_drill' | 'case_study' | 'topic_drill' | 'ai_trap_drill',
     targetTopicId?: string
   ) => {
     setIsLaunching(true);
@@ -119,18 +121,78 @@ export default function PracticePage() {
       });
     }
 
-    // If Case study mode, query case_study_questions directly with scenario text
+    // AI Exam Trap Drill mode backed by synthesized_exam_questions
+    if (mode === 'ai_trap_drill') {
+      const synthQs = await fetchSynthesizedQuestions(toCourseCertId(cert.slug), 20);
+      if (synthQs.length > 0) {
+        const letters: Array<'A' | 'B' | 'C' | 'D'> = ['A', 'B', 'C', 'D'];
+        const formatted: Question[] = synthQs.map((sq, idx) => {
+          const stripPrefix = (s: string) => s.replace(/^[A-D][).:-]\s*/i, '').trim();
+          const ansLetter = letters[Math.max(0, Math.min(3, sq.correct_index))] || 'A';
+          const trapBlock = sq.exam_trap ? `\n\n⚠️ Exam Trap: ${sq.exam_trap}` : '';
+          return {
+            id: `synth-${sq.id}`,
+            certification_id: cert.id,
+            domain_id: domains[0]?.id || cert.id,
+            topic_id: null,
+            subtopic_id: null,
+            question_number: idx + 1,
+            question_type: 'scenario',
+            stem: sq.question_text,
+            scenario_text: null,
+            option_a: stripPrefix(sq.options[0] || 'Option A'),
+            option_b: stripPrefix(sq.options[1] || 'Option B'),
+            option_c: stripPrefix(sq.options[2] || 'Option C'),
+            option_d: stripPrefix(sq.options[3] || 'Option D'),
+            correct_answer: ansLetter,
+            rationale: `${sq.rationale}${trapBlock}`.trim(),
+            incorrect_rationale_a: null,
+            incorrect_rationale_b: null,
+            incorrect_rationale_c: null,
+            incorrect_rationale_d: null,
+            difficulty: sq.difficulty === 'hard' || sq.difficulty === 'easy' ? sq.difficulty : 'medium',
+            task_statement: null,
+            tags: ['AI Trap Drill', sq.domain_name || cert.code || 'Core'],
+            source_reference: sq.source_ref || `Synthesized Study Trap (${cert.code})`,
+            source_confidence: 'verified',
+            content_hash: null,
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        });
+        await startQuiz(formatted, 'practice', 1200, cert.id, null, 'immediate');
+        setIsLaunching(false);
+        navigate('/quiz');
+        return;
+      }
+    }
+
+    // If Case study mode, strictly scope case studies to the active certification's domain IDs
     if (mode === 'case_study') {
-      const { data: csqData } = await supabase
-        .from('case_study_questions')
-        .select('*, case_studies(id, title, scenario_text, domain_id)')
-        .order('sort_order');
+      const domainIds = domains.map((d) => d.id);
+      let csqData: any[] | null = null;
+      if (domainIds.length > 0) {
+        const { data: csRows } = await supabase
+          .from('case_studies')
+          .select('id')
+          .in('domain_id', domainIds);
+        const csIds = (csRows || []).map((r: { id: string }) => r.id);
+        if (csIds.length > 0) {
+          const { data } = await supabase
+            .from('case_study_questions')
+            .select('*, case_studies(id, title, scenario_text, domain_id)')
+            .in('case_study_id', csIds)
+            .order('sort_order');
+          csqData = data;
+        }
+      }
 
       if (csqData && csqData.length > 0) {
         const formattedQuestions: Question[] = csqData.map((csq: any, idx: number) => ({
           id: csq.id,
           certification_id: cert.id,
-          domain_id: csq.case_studies?.domain_id || cert.id,
+          domain_id: csq.case_studies?.domain_id || domains[0]?.id || cert.id,
           topic_id: null,
           subtopic_id: null,
           question_number: csq.question_number || idx + 1,
@@ -166,6 +228,21 @@ export default function PracticePage() {
           null,
           'immediate'
         );
+        setIsLaunching(false);
+        navigate('/quiz');
+        return;
+      }
+
+      // Clean per-certification fallback to scenario items if no dedicated case_study exists yet
+      const { data: scenData } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('certification_id', cert.id)
+        .eq('is_active', true)
+        .eq('question_type', 'scenario')
+        .limit(12);
+      if (scenData && scenData.length > 0) {
+        await startQuiz(scenData, 'practice', 1200, cert.id, null, 'immediate');
         setIsLaunching(false);
         navigate('/quiz');
         return;
@@ -445,7 +522,33 @@ export default function PracticePage() {
           </button>
         </div>
 
-        {/* Card 5: 60-Topic Targeted Drill */}
+        {/* Card 5: AI Exam Trap Drill (Cloud Synthesized Exam Questions) */}
+        <div className="practice-mode-card">
+          <div>
+            <div className="practice-icon-box" style={{ backgroundColor: 'rgba(139, 92, 246, 0.12)', borderColor: 'rgba(139, 92, 246, 0.35)', color: '#7c3aed' }}>
+              🧠
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+              <span className="badge badge-primary" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                AI Exam Trap Hunter
+              </span>
+            </div>
+            <h3 className="practice-card-title">AI Exam Trap &amp; Scenario Drill</h3>
+            <p className="practice-card-desc">
+              Targets subtle distractors and high-yield exam traps extracted from {currentCert?.code || 'official'} textbooks with step-by-step trap breakdowns.
+            </p>
+          </div>
+          <button
+            disabled={isLaunching}
+            onClick={() => handleLaunchPractice('ai_trap_drill')}
+            className="btn btn-primary"
+            style={{ width: '100%' }}
+          >
+            Start Trap Drill ➔
+          </button>
+        </div>
+
+        {/* Card 6: Targeted Topic Drill */}
         <div className="practice-mode-card">
           <div>
             <div className="practice-icon-box" style={{ backgroundColor: 'var(--color-primary-50)', borderColor: 'var(--color-primary-200)', color: 'var(--color-primary)' }}>

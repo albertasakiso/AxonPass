@@ -51,6 +51,8 @@ export interface CompositeReadinessInput {
   totalCertQuestions: number;
   totalSubtopics: number;
   completedSubtopicsCount: number;
+  textbookTotalSections?: number;
+  textbookCompletedSections?: number;
   targetExamDate?: string | null;
 }
 
@@ -67,6 +69,8 @@ export function calculateCompositeReadiness(input: CompositeReadinessInput): Com
     totalCertQuestions,
     totalSubtopics,
     completedSubtopicsCount,
+    textbookTotalSections = 0,
+    textbookCompletedSections = 0,
     targetExamDate = null,
   } = input;
 
@@ -98,16 +102,30 @@ export function calculateCompositeReadiness(input: CompositeReadinessInput): Com
     badge: rawTestingScore >= 75 ? 'Pass Ready' : rawTestingScore >= 60 ? 'Borderline' : 'Diagnostic Needed',
   };
 
-  // 2. Syllabus Reading Coverage Component (Weight: 25%)
-  // Ratio of completed subtopics to total syllabus lessons
+  // 2. Syllabus + Full Textbook Reading Coverage Component (Weight: 25%)
   const safeTotalSubtopics = Math.max(1, totalSubtopics);
-  const rawSyllabusScore = Math.min(100, Math.round((completedSubtopicsCount / safeTotalSubtopics) * 100));
+  const syllabusRatio = totalSubtopics > 0 ? Math.min(1, completedSubtopicsCount / safeTotalSubtopics) : 0;
+  const textbookRatio =
+    textbookTotalSections > 0 ? Math.min(1, textbookCompletedSections / textbookTotalSections) : 0;
+
+  let rawSyllabusScore = 0;
+  let syllabusDesc = `${completedSubtopicsCount} of ${totalSubtopics} syllabus submodules completed`;
+  if (totalSubtopics > 0 && textbookTotalSections > 0) {
+    rawSyllabusScore = Math.min(100, Math.round((syllabusRatio * 0.4 + textbookRatio * 0.6) * 100));
+    syllabusDesc = `${completedSubtopicsCount}/${totalSubtopics} syllabus · ${textbookCompletedSections}/${textbookTotalSections} book sections`;
+  } else if (textbookTotalSections > 0) {
+    rawSyllabusScore = Math.min(100, Math.round(textbookRatio * 100));
+    syllabusDesc = `${textbookCompletedSections} of ${textbookTotalSections} textbook subchapters completed`;
+  } else {
+    rawSyllabusScore = Math.min(100, Math.round(syllabusRatio * 100));
+  }
+
   const syllabusComponent: ReadinessComponent = {
-    label: 'Course Syllabus Mastery',
+    label: 'Curriculum & Textbook Mastery',
     weight: 0.25,
     score: rawSyllabusScore,
     weightedScore: Math.round(rawSyllabusScore * 0.25),
-    description: `${completedSubtopicsCount} of ${totalSubtopics} syllabus submodules completed`,
+    description: syllabusDesc,
     badge: rawSyllabusScore >= 80 ? 'Mastered' : rawSyllabusScore >= 50 ? 'In Progress' : 'Early Stage',
   };
 

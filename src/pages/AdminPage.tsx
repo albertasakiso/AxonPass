@@ -217,7 +217,7 @@ export default function AdminPage() {
                 </p>
               </div>
               <button
-                onClick={downloadExcelQuestionTemplate}
+                onClick={() => void downloadExcelQuestionTemplate()}
                 className="btn btn-primary"
                 style={{ width: '100%' }}
               >

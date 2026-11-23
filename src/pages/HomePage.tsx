@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useProgressStore } from '../stores/progressStore';
 import { useLessonProgressStore } from '../stores/lessonProgressStore';
+import { useReadingProgressStore } from '../stores/readingProgressStore';
 import { useQuizStore } from '../stores/quizStore';
 import { supabase } from '../lib/supabase';
 import { CompositeReadinessGauge } from '../components/insights/CompositeReadinessGauge';
@@ -19,6 +20,8 @@ export default function HomePage() {
   const { startQuiz } = useQuizStore();
   const [currentCert, setCurrentCert] = useState<Certification | null>(null);
   const [domains, setDomains] = useState<Domain[]>([]);
+  const [totalSubtopicsCount, setTotalSubtopicsCount] = useState<number>(0);
+  const [textbookTotalSections, setTextbookTotalSections] = useState<number>(0);
   const [isLaunching, setIsLaunching] = useState(false);
   const [targetExamDate, setTargetExamDate] = useState<string | null>(() => getTargetExamDate(activeCertificationSlug));
 
@@ -37,6 +40,14 @@ export default function HomePage() {
   } = useProgressStore();
 
   const { completedSubtopicIds } = useLessonProgressStore();
+  const readingRecords = useReadingProgressStore((s) => s.records);
+  const textbookCompletedSections = useMemo(
+    () =>
+      Object.values(readingRecords).filter(
+        (r) => r.certificationSlug === activeCertificationSlug && r.status === 'completed'
+      ).length,
+    [readingRecords, activeCertificationSlug]
+  );
 
   useEffect(() => {
     refreshProgress(activeCertificationSlug);
@@ -53,12 +64,29 @@ export default function HomePage() {
 
       if (certData) {
         setCurrentCert(certData);
-        const { data: domData } = await supabase
-          .from('domains')
-          .select('*')
-          .eq('certification_id', certData.id)
-          .order('domain_number');
-        if (domData) setDomains(domData);
+        const [{ data: domData }, { data: tbData }] = await Promise.all([
+          supabase.from('domains').select('*').eq('certification_id', certData.id).order('domain_number'),
+          supabase.from('textbooks').select('total_sections').eq('certification_slug', certData.slug),
+        ]);
+        if (domData) {
+          setDomains(domData);
+          const domIds = domData.map((d) => d.id);
+          if (domIds.length > 0) {
+            const { data: topRows } = await supabase.from('topics').select('id').in('domain_id', domIds);
+            const topIds = (topRows || []).map((t: { id: string }) => t.id);
+            if (topIds.length > 0) {
+              const { count: subCnt } = await supabase
+                .from('subtopics')
+                .select('id', { count: 'exact', head: true })
+                .in('topic_id', topIds);
+              setTotalSubtopicsCount(subCnt || 0);
+            } else {
+              setTotalSubtopicsCount(0);
+            }
+          }
+        }
+        const totalSec = (tbData || []).reduce((sum, r) => sum + Number((r as { total_sections?: number }).total_sections || 0), 0);
+        setTextbookTotalSections(totalSec);
       }
     }
     loadActiveCertAndDomains();
@@ -69,7 +97,7 @@ export default function HomePage() {
   const certName = currentCert?.name || 'CISA (28th Edition Blueprint)';
   const dailyPercent = Math.min(100, Math.round((totalStudyMinutes / Math.max(1, dailyGoal)) * 100));
 
-  // Compute Unified Composite Readiness Index (Testing 55%, Syllabus 25%, Leitner 20%)
+  // Compute Unified Composite Readiness Index (Testing 55%, Curriculum & Textbook 25%, Retention 20%)
   const compositeReadiness = useMemo(() => {
     return calculateCompositeReadiness({
       certSlug: activeCertificationSlug,
@@ -78,8 +106,10 @@ export default function HomePage() {
       overallAccuracy,
       boxCounts,
       totalCertQuestions: currentCert?.total_exam_questions ? currentCert.total_exam_questions * 30 : 5000,
-      totalSubtopics: 0,
+      totalSubtopics: totalSubtopicsCount,
       completedSubtopicsCount: completedSubtopicIds.size,
+      textbookTotalSections,
+      textbookCompletedSections,
       targetExamDate,
     });
   }, [
@@ -89,7 +119,10 @@ export default function HomePage() {
     overallAccuracy,
     boxCounts,
     currentCert,
+    totalSubtopicsCount,
     completedSubtopicIds.size,
+    textbookTotalSections,
+    textbookCompletedSections,
     targetExamDate,
   ]);
 

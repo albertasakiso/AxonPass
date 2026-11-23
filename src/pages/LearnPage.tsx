@@ -18,6 +18,7 @@ import { CertVersionDeltaViewer } from '../components/learn/CertVersionDeltaView
 import { TaskStatementsDrawer } from '../components/learn/TaskStatementsDrawer';
 import { ConceptGraphExplorer } from '../components/learn/ConceptGraphExplorer';
 import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
+import ErrorBoundary from '../components/common/ErrorBoundary';
 import CoursePlayerPage from './CoursePlayerPage';
 import type { Certification, Domain, Topic, Subtopic, Question, GlossaryTerm, StudyMaterial, TaskStatement, DocumentIngestionRecord } from '../types';
 
@@ -753,6 +754,7 @@ export default function LearnPage() {
         </div>
       </div>
 
+      <ErrorBoundary fallbackTitle="Error loading this certification learning workspace">
       {viewMode === 'textbook' ? (
         <FullTextbookReader
           certSlug={effectiveCertSlug}
@@ -1034,6 +1036,7 @@ export default function LearnPage() {
         </div>
       </div>
       )}
+      </ErrorBoundary>
 
       {/* Lesson Viewer Modal */}
       {activeSubtopic && (

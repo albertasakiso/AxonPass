@@ -5,12 +5,13 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CERTIFICATION_COURSES, getCourseByCertId } from '../data';
+import { COURSE_CATALOG, loadCourseByCertId } from '../data';
+import { toDbCertSlug } from '../lib/textbookService';
 import {
   DIFFICULTY_TIER_META,
   type DifficultyTier,
 } from '../types/academy';
-import type { CourseLesson } from '../types/course';
+import type { CertificationCourse, CourseLesson } from '../types/course';
 import { useAcademyProgressStore } from '../stores/academyProgressStore';
 import { LocalCoachDrawer } from '../components/academy/LocalCoachDrawer';
 import { StorageEfficiencyPanel } from '../components/academy/StorageEfficiencyPanel';
@@ -86,10 +87,32 @@ export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: 
     addFsrsCard,
   } = useAcademyProgressStore();
 
-  const course = useMemo(
-    () => (certId ? getCourseByCertId(certId) : undefined),
-    [certId]
-  );
+  const [course, setCourse] = useState<CertificationCourse | undefined>(undefined);
+  const [loadingCourse, setLoadingCourse] = useState<boolean>(Boolean(certId));
+
+  useEffect(() => {
+    let active = true;
+    if (!certId) {
+      setCourse(undefined);
+      setLoadingCourse(false);
+      return;
+    }
+    setLoadingCourse(true);
+    loadCourseByCertId(certId)
+      .then((loaded) => {
+        if (!active) return;
+        setCourse(loaded);
+        setLoadingCourse(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setCourse(undefined);
+        setLoadingCourse(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [certId]);
 
   // Flattened lesson list for Prev/Next navigation
   const flatLessons = useMemo(() => {
@@ -125,9 +148,18 @@ export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: 
     fetchSynthesizedQuestions(course.certId, 50).then(setCloudQuestions).catch(() => setCloudQuestions([]));
   }, [course?.certId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── CATALOG VIEW (/learn) ──
+  if (certId && loadingCourse) {
+    return (
+      <div className="card" style={{ padding: 'var(--space-10)', textAlign: 'center' }}>
+        <div className="animate-spin" style={{ fontSize: '2rem', color: 'var(--color-primary)' }}>⟳</div>
+        <p className="text-muted mt-3">Loading interactive course &amp; hands-on labs...</p>
+      </div>
+    );
+  }
+
+  // ── CATALOG VIEW (/courses) ──
   if (!certId || !course) {
-    const filteredCourses = CERTIFICATION_COURSES.filter((c) => {
+    const filteredCourses = COURSE_CATALOG.filter((c) => {
       if (selectedTier !== 'all' && c.tier !== selectedTier) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -153,7 +185,7 @@ export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: 
                 concept checks, hands-on drills, FSRS flashcards, and local open-weights AI tutoring.
               </p>
               <div className="academy-hero-badges">
-                <span className="hero-pill">🎓 {CERTIFICATION_COURSES.length} Full Courses</span>
+                <span className="hero-pill">🎓 {COURSE_CATALOG.length} Full Courses</span>
                 <span className="hero-pill">🧠 FSRS Flashcards Built-In</span>
                 <span className="hero-pill">🤖 Lesson-Aware Local AI Tutor</span>
               </div>
@@ -178,7 +210,7 @@ export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: 
               className={`tier-pill ${selectedTier === 'all' ? 'active' : ''}`}
               onClick={() => setSelectedTier('all')}
             >
-              All Courses ({CERTIFICATION_COURSES.length})
+              All Courses ({COURSE_CATALOG.length})
             </button>
             {TIERS.map((tier) => (
               <button
@@ -204,7 +236,7 @@ export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: 
 
         <section className="paths-grid">
           {filteredCourses.map((c) => {
-            const totalLessons = c.domains.reduce((sum, d) => sum + d.lessons.length, 0);
+            const totalLessons = c.lessonCount;
             const stats = getCertCourseStats(c.certId, totalLessons);
 
             return (
@@ -226,7 +258,7 @@ export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: 
                 </div>
 
                 <div className="mastery-card-meta">
-                  <span>🏛️ {c.domains.length} Domains</span>
+                  <span>🏛️ {c.domainCount} Domains</span>
                   <span>📖 {totalLessons} Lessons</span>
                   <span>⏱ {c.estimatedTotalHours}h</span>
                 </div>
@@ -250,7 +282,7 @@ export default function CoursePlayerPage({ embeddedCertId }: { embeddedCertId?: 
                   type="button"
                   className="btn btn-primary btn-sm"
                   style={{ marginTop: 'auto' }}
-                  onClick={() => navigate(`/learn/${c.certId}`)}
+                  onClick={() => navigate(`/learn/${toDbCertSlug(c.certId)}?tab=guided`)}
                 >
                   {stats.completedLessons > 0
                     ? `Continue Learning (${stats.percentComplete}%)`

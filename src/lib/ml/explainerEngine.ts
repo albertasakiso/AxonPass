@@ -6,12 +6,9 @@
 
 import type { Question } from '../../types';
 import {
-  ALL_KNOWLEDGE_NODES,
-  NODES_BY_CERT,
-  BM25_STATS_BY_CERT,
-  INVERTED_INDEX_BY_CERT,
-  CISA_KNOWLEDGE_GRAPH,
-} from './knowledgeGraph';
+  matchQuestionToKnowledgeNodeLightweight,
+  preloadKnowledgeGraph,
+} from './knowledgeGraphService';
 import type {
   DeepProblemExplanation,
   OperatorAnalysis,
@@ -19,92 +16,18 @@ import type {
   KnowledgeNode,
 } from './types';
 
-// BM25 Hyperparameters (Robertson & Spärck Jones)
-const BM25_K1 = 1.5;
-const BM25_B = 0.75;
-
-/**
- * Tokenizes text into lowercase alphanumeric query tokens.
- */
-function tokenizeText(text: string): string[] {
-  const tokens = text.toLowerCase().match(/\b[a-z0-9_./-]{2,}\b/g) || [];
-  const stopwords = new Set([
-    'the', 'and', 'for', 'that', 'this', 'with', 'from', 'are', 'was', 'were',
-    'has', 'have', 'had', 'its', 'their', 'which', 'will', 'all', 'any', 'can',
-    'not', 'but', 'into', 'been', 'must', 'should', 'could', 'such', 'when',
-    'what', 'more', 'also', 'than', 'them', 'they', 'each', 'about', 'after'
-  ]);
-  return tokens.filter((t) => !stopwords.has(t) && t.length > 2);
+if (typeof window !== 'undefined') {
+  void preloadKnowledgeGraph();
 }
 
 /**
- * Semantic vector similarity search using the BM25 formula to ground questions in the authoritative corpus.
+ * Semantic similarity matcher grounding questions in live ml_knowledge_nodes without bundling 15 MB static TS.
  */
 export function matchQuestionToKnowledgeNode(
   question: Question,
   certCode: string = 'CISA'
 ): KnowledgeNode {
-  const certNodes = NODES_BY_CERT[certCode] || NODES_BY_CERT['CISA'] || ALL_KNOWLEDGE_NODES;
-  const certStats = BM25_STATS_BY_CERT[certCode] || BM25_STATS_BY_CERT['CISA'] || {
-    num_docs: 60,
-    avg_dl: 35.0,
-    doc_lengths: {},
-    idf: {},
-  };
-  const certIndex = INVERTED_INDEX_BY_CERT[certCode] || INVERTED_INDEX_BY_CERT['CISA'] || {};
-
-  // 1. Direct topic_id / tag code match if available
-  if (question.topic_id) {
-    const directMatch = certNodes.find(
-      (n) => n.id === question.topic_id || n.topicCode.toLowerCase() === question.topic_id?.toLowerCase()
-    );
-    if (directMatch) return directMatch;
-  }
-
-  // 2. Tokenize query stem, tags, source reference, and options
-  const queryText = `${question.stem} ${question.tags?.join(' ') || ''} ${question.source_reference || ''}`;
-  const queryTokens = tokenizeText(queryText);
-
-  const avgdl = certStats.avg_dl || 35.0;
-  const idfMap = certStats.idf as Record<string, number>;
-  const docLengths = certStats.doc_lengths as Record<string, number>;
-
-  // Fast Candidate Retrieval via Inverted Index
-  const candidateScores: Record<string, number> = {};
-
-  for (const token of queryTokens) {
-    const matchedNodeIds = certIndex[token] || [];
-    const termIdf = idfMap[token] || 1.2;
-
-    for (const nodeId of matchedNodeIds) {
-      if (!candidateScores[nodeId]) candidateScores[nodeId] = 0;
-      
-      const docLen = docLengths[nodeId] || avgdl;
-      const termFreq = 1.0;
-      
-      const numerator = termFreq * (BM25_K1 + 1);
-      const denominator = termFreq + BM25_K1 * (1 - BM25_B + BM25_B * (docLen / avgdl));
-      const bm25TermScore = termIdf * (numerator / denominator);
-      
-      candidateScores[nodeId] += bm25TermScore;
-    }
-  }
-
-  let bestNodeId = certNodes[0]?.id;
-  let highestScore = -1;
-
-  for (const [nodeId, score] of Object.entries(candidateScores)) {
-    if (score > highestScore) {
-      highestScore = score;
-      bestNodeId = nodeId;
-    }
-  }
-
-  return (
-    certNodes.find((n) => n.id === bestNodeId) ||
-    certNodes[0] ||
-    CISA_KNOWLEDGE_GRAPH[0]
-  );
+  return matchQuestionToKnowledgeNodeLightweight(question, certCode);
 }
 
 /**

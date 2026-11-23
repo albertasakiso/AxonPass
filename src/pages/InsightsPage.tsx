@@ -25,6 +25,7 @@ import {
 } from 'recharts';
 import { useProgressStore } from '../stores/progressStore';
 import { useLessonProgressStore } from '../stores/lessonProgressStore';
+import { useReadingProgressStore } from '../stores/readingProgressStore';
 import { useQuizStore } from '../stores/quizStore';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
@@ -68,10 +69,28 @@ export default function InsightsPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'topics' | 'mistakes'>('overview');
   const [topicSearchTerm, setTopicSearchTerm] = useState('');
   const [selectedDomainFilter, setSelectedDomainFilter] = useState<number | 'all'>('all');
+  const [textbookTotalSections, setTextbookTotalSections] = useState<number>(0);
 
-  // Sync target exam date when selected cert changes
+  const readingRecords = useReadingProgressStore((s) => s.records);
+  const textbookCompletedSections = useMemo(
+    () =>
+      Object.values(readingRecords).filter(
+        (r) => r.certificationSlug === selectedCertSlug && r.status === 'completed'
+      ).length,
+    [readingRecords, selectedCertSlug]
+  );
+
+  // Sync target exam date and textbook count when selected cert changes
   useEffect(() => {
     setTargetExamDate(getTargetExamDate(selectedCertSlug));
+    supabase
+      .from('textbooks')
+      .select('total_sections')
+      .eq('certification_slug', selectedCertSlug)
+      .then(({ data }) => {
+        const sum = (data || []).reduce((acc, r) => acc + Number((r as { total_sections?: number }).total_sections || 0), 0);
+        setTextbookTotalSections(sum);
+      });
   }, [selectedCertSlug]);
 
   // Load available certifications
@@ -161,7 +180,7 @@ export default function InsightsPage() {
     navigate('/quiz');
   };
 
-  // Compute Unified Composite Readiness Index (Testing 55%, Syllabus 25%, Leitner 20%)
+  // Compute Unified Composite Readiness Index (Testing 55%, Curriculum & Textbook 25%, Retention 20%)
   const compositeReadiness = useMemo(() => {
     return calculateCompositeReadiness({
       certSlug: selectedCertSlug,
@@ -172,6 +191,8 @@ export default function InsightsPage() {
       totalCertQuestions: 5000,
       totalSubtopics: topicSummaries.length > 0 ? topicSummaries.length : 0,
       completedSubtopicsCount,
+      textbookTotalSections,
+      textbookCompletedSections,
       targetExamDate,
     });
   }, [
@@ -182,6 +203,8 @@ export default function InsightsPage() {
     boxCounts,
     topicSummaries.length,
     completedSubtopicsCount,
+    textbookTotalSections,
+    textbookCompletedSections,
     targetExamDate,
   ]);
 

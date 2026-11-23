@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, lazy, Suspense } from 'react';
 import { useAuthStore } from './stores/authStore';
 import AppShell from './components/layout/AppShell';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import { pullContentFromServer, pushSyncQueue } from './lib/sync';
 
 // Lazy-loaded pages for fast initial bundle
@@ -108,8 +109,9 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
+      <ErrorBoundary fallbackTitle="AnoxPass encountered a navigation error">
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
           {/* Public route */}
           <Route
             path="/login"
@@ -149,10 +151,11 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

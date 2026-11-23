@@ -4,13 +4,13 @@
    question banks into .xlsx, .csv, and .json formats.
    =================================================================== */
 
-import * as XLSX from 'xlsx';
 import type { Question } from '../../types';
 
 /**
  * Generate and trigger download for a clean, styled Excel (.xlsx) Question Template.
  */
-export function downloadExcelQuestionTemplate() {
+export async function downloadExcelQuestionTemplate(): Promise<void> {
+  const XLSX = await import('xlsx');
   const sampleData = [
     {
       'Question Stem': 'What is the primary objective of an IS Audit Charter?',
@@ -63,7 +63,8 @@ export function downloadExcelQuestionTemplate() {
 /**
  * Export questions array to a clean, formatted Excel (.xlsx) file.
  */
-export function exportQuestionsToExcel(questions: Question[], certName: string) {
+export async function exportQuestionsToExcel(questions: Question[], certName: string): Promise<void> {
+  const XLSX = await import('xlsx');
   const exportRows = questions.map((q, idx) => ({
     'ID': q.id,
     'Number': q.question_number || idx + 1,

@@ -11,9 +11,9 @@ export { READING_MASTERY_CURRICULUM } from './readingMasteryCurriculum';
 export { LEADERSHIP_CURRICULUM } from './leadershipCurriculum';
 export { LEADERSHIP_BOOKS } from './leadershipBooks';
 export {
-  CERTIFICATION_COURSES,
-  COURSES_BY_CERT_ID,
-  getCourseByCertId,
+  COURSE_CATALOG,
+  loadCourseByCertId,
+  type CourseCatalogItem,
 } from './courses';
 
 import { PUBLIC_SPEAKING_CURRICULUM } from './publicSpeakingCurriculum';

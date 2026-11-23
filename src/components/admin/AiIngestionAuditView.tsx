@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { db } from '../../lib/db';
 import { analyzeDecisionOperator } from '../../lib/ml/explainerEngine';
-import { ALL_KNOWLEDGE_NODES } from '../../lib/ml/knowledgeGraph';
+import { getCachedKnowledgeNodes, preloadKnowledgeGraph } from '../../lib/ml/knowledgeGraphService';
 import type { DocumentIngestionRecord, Certification } from '../../types';
 
 interface AiIngestionAuditViewProps {
@@ -63,6 +63,7 @@ export const AiIngestionAuditView: React.FC<AiIngestionAuditViewProps> = ({ cert
 
   useEffect(() => {
     loadLedger();
+    void preloadKnowledgeGraph();
   }, [loadLedger]);
 
   // Execute Live Cognitive Test Query
@@ -71,12 +72,13 @@ export const AiIngestionAuditView: React.FC<AiIngestionAuditViewProps> = ({ cert
     setTimeout(() => {
       const cognitiveOp = analyzeDecisionOperator(queryText, 'CISA');
       const lowerQ = queryText.toLowerCase();
+      const allNodes = getCachedKnowledgeNodes();
 
       // Find top matched knowledge node
-      const matchedNode = ALL_KNOWLEDGE_NODES.find(n => 
+      const matchedNode = allNodes.find(n => 
         lowerQ.includes(n.name.toLowerCase()) || 
         n.keywords.some(k => lowerQ.includes(k.toLowerCase()))
-      ) || ALL_KNOWLEDGE_NODES[0];
+      ) || allNodes[0];
 
       // Find top matched document from the ingested ledger
       const matchedDoc = ledger.find(d => {
@@ -106,12 +108,13 @@ export const AiIngestionAuditView: React.FC<AiIngestionAuditViewProps> = ({ cert
 
   // Aggregated Statistics
   const stats = useMemo(() => {
+    const allNodes = getCachedKnowledgeNodes();
     const totalDocs = ledger.length || 352;
     const totalBytes = ledger.reduce((acc, d) => acc + Number(d.file_size_bytes || 0), 0) || 1932501845;
     const totalChunks = ledger.reduce((acc, d) => acc + (d.extracted_chunks_count || 0), 0) || 1022515;
     const totalTokens = ledger.reduce((acc, d) => acc + (d.extracted_tokens_count || 0), 0) || 460138232;
-    const totalQuestions = 75000;
-    const totalKnowledgeNodes = 338;
+    const totalQuestions = 17725;
+    const totalKnowledgeNodes = allNodes.length || 338;
     const totalStudyChapters = 112;
     const totalGlossaryTerms = 869;
 

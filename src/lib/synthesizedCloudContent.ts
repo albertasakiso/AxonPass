@@ -6,6 +6,7 @@
    =================================================================== */
 
 import { supabase } from './supabase';
+import { toCourseCertId } from './textbookService';
 import type { CourseLesson } from '../types/course';
 
 export interface SynthesizedExamQuestion {
@@ -41,10 +42,11 @@ export interface SynthesisJobRow {
  */
 export async function fetchSynthesizedLessons(certId: string): Promise<CourseLesson[]> {
   try {
+    const normalizedId = toCourseCertId(certId);
     const { data, error } = await supabase
       .from('synthesized_lessons')
       .select('id, cert_id, domain_name, lesson_slug, title, content_json, source_refs')
-      .eq('cert_id', certId)
+      .eq('cert_id', normalizedId)
       .order('created_at', { ascending: true });
 
     if (error || !Array.isArray(data)) return [];
@@ -92,12 +94,13 @@ export async function fetchSynthesizedQuestions(
   limit = 50
 ): Promise<SynthesizedExamQuestion[]> {
   try {
+    const normalizedId = toCourseCertId(certId);
     const { data, error } = await supabase
       .from('synthesized_exam_questions')
       .select(
         'id, cert_id, domain_name, difficulty, question_text, options_json, correct_index, rationale, exam_trap, source_ref, model_name'
       )
-      .eq('cert_id', certId)
+      .eq('cert_id', normalizedId)
       .limit(limit);
 
     if (error || !Array.isArray(data)) return [];

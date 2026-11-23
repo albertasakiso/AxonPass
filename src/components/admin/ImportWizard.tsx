@@ -79,7 +79,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
         setCurrentStep(clusters.length > 0 ? 'duplicates' : 'commit');
       } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
-        const sheets = inspectExcelWorkbook(buffer);
+        const sheets = await inspectExcelWorkbook(buffer);
         if (sheets.length > 0) {
           setDetectedHeaders(sheets[0].headers);
           setRawRows(sheets[0].rows);

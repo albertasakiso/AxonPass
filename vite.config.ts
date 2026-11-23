@@ -46,7 +46,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15MB for offline AI/ML knowledge graph
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4MB slim PWA shell (knowledgeGraph moved to Supabase)
         // v3 §5.5: App shell — Cache-first, 7 days
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         runtimeCaching: [
@@ -95,9 +95,9 @@ export default defineConfig({
               networkTimeoutSeconds: 10,
             },
           },
-          // v3 §5.5: Study materials, glossary — CacheFirst, 30 days
+          // v3 §5.5: Textbooks, synthesized AI lessons, knowledge nodes & glossary — CacheFirst, 30 days
           {
-            urlPattern: /\/rest\/v1\/(study_materials|glossary_terms|topics|subtopics|domains|certifications|task_statements)/i,
+            urlPattern: /\/rest\/v1\/(study_materials|glossary_terms|topics|subtopics|domains|certifications|task_statements|textbooks|textbook_chapters|textbook_sections|synthesized_lessons|synthesized_exam_questions|ml_knowledge_nodes|knowledge_units)/i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'supabase-content-cache',
