@@ -578,56 +578,30 @@ export default function LearnPage() {
 
   return (
     <div style={{ paddingBottom: 'var(--space-12)' }}>
-      {/* Certification Track Switcher */}
-      <div className="cert-tabs-bar mb-4" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '6px', scrollbarWidth: 'none' }}>
-        {certifications.map(c => (
-          <button
-            key={c.id}
-            onClick={() => {
-              setActiveCertification(c.slug);
-              if (routeCertId) {
-                navigate(`/learn/${c.slug}?tab=${viewMode}`, { replace: true });
-              }
-            }}
-            className={`cert-tab-btn ${effectiveCertSlug === c.slug ? 'active' : ''}`}
-            style={{
-              padding: '6px 14px',
-              fontSize: '11px',
-              fontWeight: 'bold',
-              borderRadius: 'var(--radius-full)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            🎯 {c.code || c.name.split('—')[0].trim()}
-          </button>
-        ))}
-      </div>
-
-      {/* Header Banner */}
-      <div className="learn-header-banner">
-        <div>
-          <div className="learn-header-badge" style={{ display: 'inline-flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span>📚 {currentCert?.code || effectiveCertSlug.toUpperCase()} Official Book &amp; Course Hub</span>
+      {/* Slim Coursera-Style Course Bar (Header handles global track switching) */}
+      <div className="learn-compact-header">
+        <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <span className="badge badge-primary" style={{ fontSize: '11px' }}>
+              📚 {currentCert?.code || effectiveCertSlug.toUpperCase()}
+            </span>
             {certPathMeta && (
-              <span style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '999px', fontSize: '11px' }}>
+              <span className="badge badge-neutral" style={{ fontSize: '11px' }}>
                 Tier {certPathMeta.tier}: {DIFFICULTY_TIER_META[certPathMeta.tier].label}
               </span>
             )}
+            {pathProgress[courseId]?.targetExamDate && (
+              <span className="badge badge-success" style={{ fontSize: '11px' }}>
+                🎯 Exam {pathProgress[courseId].targetExamDate}
+              </span>
+            )}
           </div>
-          <h1 className="learn-header-title">
+          <h1 className="learn-compact-title">
             {currentCert?.name || certPathMeta?.title || 'Certification Curriculum'}
           </h1>
-          <p className="learn-header-desc">
-            {currentCert?.description || certPathMeta?.description || `Complete end-to-end learning across ${domains.length} domains, ${allCertTopics.length} topics, and full authoritative textbooks with Read Aloud.`}
-          </p>
-          {pathProgress[courseId]?.targetExamDate && (
-            <div style={{ fontSize: '12px', marginTop: '6px', opacity: 0.92 }}>
-              🎯 Target Exam Date: <strong>{pathProgress[courseId].targetExamDate}</strong>
-            </div>
-          )}
         </div>
 
-        {/* Action Buttons */}
+        {/* Compact Action Buttons */}
         <div className="learn-actions">
           {lastReadByCert[effectiveCertSlug] && (
             <button
@@ -637,27 +611,24 @@ export default function LearnPage() {
                 setResumeTarget({ chapterId: ptr.chapterId, sectionId: ptr.sectionId });
                 switchViewMode('textbook');
               }}
-              className="btn btn-secondary"
-              style={{ backgroundColor: 'rgba(255,255,255,0.22)', color: '#fff', borderColor: 'rgba(255,255,255,0.4)', fontWeight: 700 }}
+              className="btn btn-primary btn-sm"
             >
-              🎧 Resume: {lastReadByCert[effectiveCertSlug].sectionTitle.slice(0, 22)}...
+              🎧 Resume: {lastReadByCert[effectiveCertSlug].sectionTitle.slice(0, 20)}...
             </button>
           )}
 
           {taskStatements.length > 0 && (
             <button
               onClick={() => setIsTasksOpen(true)}
-              className="btn btn-secondary"
-              style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}
+              className="btn btn-secondary btn-sm"
             >
-              📋 Task Statements ({taskStatements.length})
+              📋 Tasks ({taskStatements.length})
             </button>
           )}
 
           <button
             onClick={() => setIsGlossaryOpen(true)}
-            className="btn btn-secondary"
-            style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}
+            className="btn btn-secondary btn-sm"
           >
             📖 Glossary ({glossaryTerms.length})
           </button>
@@ -668,8 +639,7 @@ export default function LearnPage() {
               setCoachPrompt(`Act as my ${currentCert?.code || effectiveCertSlug.toUpperCase()} tutor and exam proctor. What should I focus on next?`);
               setCoachOpen(true);
             }}
-            className="btn btn-secondary"
-            style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}
+            className="btn btn-secondary btn-sm"
           >
             🤖 AI Tutor
           </button>
@@ -677,8 +647,7 @@ export default function LearnPage() {
           {selectedDomainId && (
             <button
               onClick={() => handleStartDomainQuiz(selectedDomainId)}
-              className="btn btn-primary"
-              style={{ backgroundColor: 'var(--color-primary-light)', borderColor: 'var(--color-primary-light)' }}
+              className="btn btn-primary btn-sm"
             >
               ⚡ Quiz Domain
             </button>

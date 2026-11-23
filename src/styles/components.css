@@ -497,6 +497,8 @@
 }
 
 /* ──────────────────────────────────────────────
+   QUESTION STRIKETHROUGH TOGGLE
+   ────────────────────────────────────────────── */
 .option-btn.option-strikethrough {
   opacity: 0.5;
   background-color: var(--color-bg-subtle);
@@ -553,8 +555,31 @@
   align-items: center;
   justify-content: space-around;
   padding: 0 var(--space-2) var(--safe-bottom);
-  z-index: var(--z-sticky);
+  z-index: var(--z-bottom-nav);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.06);
+}
+
+.mobile-more-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  z-index: calc(var(--z-more-sheet) - 1);
+}
+
+.mobile-more-sheet {
+  position: fixed;
+  bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + 10px);
+  right: 12px;
+  z-index: var(--z-more-sheet);
+  background-color: var(--color-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 8px;
+  box-shadow: var(--shadow-xl);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  min-width: 220px;
 }
 
 .nav-item {
@@ -638,7 +663,7 @@
   padding: var(--space-6);
   display: none;
   flex-direction: column;
-  z-index: var(--z-sticky);
+  z-index: var(--z-side-rail);
   overflow-y: auto;
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
 }
@@ -692,7 +717,8 @@
 .app-header {
   position: sticky;
   top: 0;
-  height: calc(var(--header-height) + var(--safe-top));
+  min-height: calc(var(--header-height) + var(--safe-top));
+  height: auto;
   background: var(--glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -700,8 +726,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
   padding: var(--safe-top) var(--space-4) 0;
-  z-index: var(--z-sticky);
+  z-index: var(--z-header);
 }
 
 .app-header-title {
@@ -787,8 +815,116 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  z-index: var(--z-sticky);
+  z-index: var(--z-bottom-nav);
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* Slim Docked Bottom Audio Mini-Player (Non-Colliding) */
+.docked-audio-bar {
+  position: fixed;
+  z-index: var(--z-floating-audio);
+  bottom: calc(var(--bottom-nav-height) + var(--safe-bottom) + 8px);
+  left: 10px;
+  right: 10px;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  padding: 8px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (min-width: 768px) {
+  .docked-audio-bar {
+    bottom: 16px;
+    left: calc(var(--sidebar-width) + 24px);
+    right: 24px;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+}
+
+.docked-audio-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.docked-audio-scrubber {
+  flex: 1;
+  min-width: 120px;
+  height: 6px;
+  background: var(--color-bg-muted);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.docked-audio-popover {
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selection-action-bar {
+  position: sticky;
+  top: calc(var(--header-height) + 12px);
+  z-index: var(--z-sticky-content);
+  margin-bottom: var(--space-3);
+  padding: 8px 12px;
+  border-radius: var(--radius-lg);
+  background-color: var(--color-ink);
+  color: var(--color-ink-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  box-shadow: var(--shadow-lg);
+  font-size: 12px;
+}
+
+/* Shimmer Skeleton Loaders */
+@keyframes shimmerSlide {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-muted) 25%,
+    var(--color-bg-subtle) 50%,
+    var(--color-bg-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmerSlide 1.4s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+.skeleton-line {
+  height: 12px;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.skeleton-line--title {
+  height: 22px;
+  width: 62%;
+  margin-bottom: 16px;
+}
+
+.skeleton-line--short {
+  width: 44%;
 }
 
 @media (min-width: 768px) {

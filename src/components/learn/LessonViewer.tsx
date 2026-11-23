@@ -246,8 +246,8 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
 
           <hr style={{ border: 'none', borderTop: '1px solid var(--color-bg-muted)', margin: 'var(--space-6) 0' }} />
 
-          {/* Main Markdown Text with Adobe-Style Read Aloud */}
-          <div className="ereader-prose font-normal">
+          {/* Main Editorial Prose with Adobe-Style Read Aloud */}
+          <div className="editorial-prose-column">
             <AdobeContentReader
               contentMarkdown={subtopic.content_body || 'No detailed content body available for this subtopic.'}
               chapterTitle={`${subtopic.subtopic_code} — ${subtopic.name}`}

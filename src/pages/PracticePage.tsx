@@ -353,20 +353,35 @@ export default function PracticePage() {
           </p>
         </div>
 
-        {/* Track Switcher */}
-        <div className="cert-tabs-bar">
-          {certifications.map(c => (
-            <button
-              key={c.id}
-              onClick={() => {
-                setSelectedCertSlug(c.slug);
-                setActiveCertification(c.slug);
-              }}
-              className={`cert-tab-btn ${selectedCertSlug === c.slug ? 'active' : ''}`}
-            >
-              🎯 {c.code || c.slug.toUpperCase()}
-            </button>
-          ))}
+        {/* Active Track Compact Switcher */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <select
+            value={selectedCertSlug}
+            onChange={(e) => {
+              setSelectedCertSlug(e.target.value);
+              setActiveCertification(e.target.value);
+            }}
+            className="input"
+            aria-label="Practice Certification Track"
+            style={{
+              fontSize: '12px',
+              fontWeight: 700,
+              padding: '6px 12px',
+              minHeight: '38px',
+              borderRadius: 'var(--radius-full)',
+              backgroundColor: 'rgba(255,255,255,0.16)',
+              color: '#fff',
+              borderColor: 'rgba(255,255,255,0.35)',
+              cursor: 'pointer',
+              maxWidth: '220px',
+            }}
+          >
+            {certifications.map((c) => (
+              <option key={c.id} value={c.slug} style={{ color: '#0F172A', background: '#FFFFFF' }}>
+                🎯 {c.code || c.slug.toUpperCase()} — {c.name.slice(0, 28)}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

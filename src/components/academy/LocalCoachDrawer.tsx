@@ -12,6 +12,7 @@ import {
   type LocalCoachMode,
   type LocalCoachSource,
 } from '../../lib/ai/localCoachService';
+import { EditorialMarkdown } from '../common/EditorialMarkdown';
 
 interface ChatMessage {
   id: string;
@@ -178,7 +179,11 @@ export function LocalCoachDrawer({
                 msg.role === 'user' ? 'coach-bubble--user' : 'coach-bubble--ai'
               }`}
             >
-              <div>{msg.text}</div>
+              {msg.role === 'ai' ? (
+                <EditorialMarkdown content={msg.text} compact />
+              ) : (
+                <div>{msg.text}</div>
+              )}
               {msg.engine && (
                 <div style={{ fontSize: '10px', opacity: 0.65, marginTop: '6px' }}>
                   Engine: {msg.engine}

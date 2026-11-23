@@ -218,28 +218,14 @@ export default function HomePage() {
 
       {/* 2. Spaced Repetition Due Alert Banner */}
       {reviewDueCount > 0 && (
-        <div
-          className="card mb-6"
-          style={{
-            background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)',
-            borderColor: '#FCD34D',
-            padding: 'var(--space-4)',
-            borderRadius: 'var(--radius-lg)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 'var(--space-3)',
-            boxShadow: 'var(--shadow-sm)',
-          }}
-        >
+        <div className="review-alert-banner mb-6">
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
             <div style={{ fontSize: '2rem', lineHeight: 1 }}>🧠</div>
             <div>
-              <div style={{ fontWeight: 'bold', color: '#92400E', fontSize: 'var(--text-sm)' }}>
+              <div style={{ fontWeight: 'bold', fontSize: 'var(--text-sm)' }}>
                 {reviewDueCount} Spaced-Repetition Reviews Due
               </div>
-              <div style={{ color: '#B45309', fontSize: 'var(--text-xs)' }}>
+              <div className="review-alert-subtitle">
                 Reinforce weak concepts in Leitner Boxes 0–2 before memory retention decays.
               </div>
             </div>

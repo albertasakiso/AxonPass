@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import 'katex/dist/katex.min.css';
 @import './academy.css';
 
@@ -26,6 +26,7 @@
 
   --color-bg: #FFFFFF;
   --color-bg-subtle: #F8FAFC;
+  --color-surface-subtle: #F8FAFC;
   --color-bg-muted: #F1F5F9;
   --color-card-bg: #FFFFFF;
   --color-card-border: #E2E8F0;
@@ -55,6 +56,7 @@
   /* Typography */
   --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   --text-2xs: 0.6875rem; /* 11px */
@@ -125,6 +127,7 @@
   --shadow-md: 0 4px 12px rgba(0, 35, 102, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
   --shadow-lg: 0 12px 24px -4px rgba(0, 35, 102, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.04);
   --shadow-xl: 0 20px 32px -4px rgba(0, 35, 102, 0.16), 0 8px 16px -4px rgba(0, 0, 0, 0.06);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   --shadow-glow: 0 0 20px rgba(65, 105, 225, 0.25);
 
   /* Transitions */
@@ -132,11 +135,19 @@
   --transition-base: 220ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 320ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Z-Index Scale */
-  --z-dropdown: 100;
+  /* Z-Index Scale (Strict Non-Colliding Tiers) */
+  --z-sticky-content: 50;
+  --z-dropdown: 120;
   --z-sticky: 200;
-  --z-modal-backdrop: 300;
-  --z-modal: 400;
+  --z-header: 200;
+  --z-side-rail: 210;
+  --z-bottom-nav: 220;
+  --z-more-sheet: 240;
+  --z-floating-audio: 260;
+  --z-drawer-backdrop: 300;
+  --z-drawer: 310;
+  --z-modal-backdrop: 400;
+  --z-modal: 410;
   --z-toast: 500;
   --z-tooltip: 600;
 }
@@ -156,6 +167,7 @@
 
   --color-bg: #0B0F19;
   --color-bg-subtle: #111827;
+  --color-surface-subtle: #111827;
   --color-bg-muted: #1F2937;
   --color-card-bg: #111827;
   --color-card-border: #1F2937;
@@ -188,6 +200,73 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 20px 32px -4px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* Reader Paper Themes & Typography Modes */
+.reader-theme-light {
+  --reader-bg: #FFFFFF;
+  --reader-surface: #F8FAFC;
+  --reader-ink: #0F172A;
+  --reader-ink-muted: #475569;
+  --reader-border: #E2E8F0;
+  --reader-accent: #1E40AF;
+  background-color: var(--reader-bg);
+  color: var(--reader-ink);
+}
+
+.reader-theme-sepia {
+  --reader-bg: #FBF7EE;
+  --reader-surface: #F4ECD8;
+  --reader-ink: #2C2217;
+  --reader-ink-muted: #6B5B47;
+  --reader-border: #E5D9BE;
+  --reader-accent: #8B4513;
+  background-color: var(--reader-bg) !important;
+  color: var(--reader-ink) !important;
+  border-color: var(--reader-border) !important;
+}
+
+.reader-theme-dark {
+  --reader-bg: #0F172A;
+  --reader-surface: #1E293B;
+  --reader-ink: #F1F5F9;
+  --reader-ink-muted: #94A3B8;
+  --reader-border: #334155;
+  --reader-accent: #60A5FA;
+  background-color: var(--reader-bg) !important;
+  color: var(--reader-ink) !important;
+  border-color: var(--reader-border) !important;
+}
+
+.reader-theme-sepia .ereader-prose,
+.reader-theme-sepia .ereader-prose p,
+.reader-theme-sepia .ereader-prose li,
+.reader-theme-sepia .ereader-prose strong,
+.reader-theme-sepia .ereader-prose td,
+.reader-theme-sepia h1,
+.reader-theme-sepia h2,
+.reader-theme-sepia h3 {
+  color: var(--reader-ink);
+}
+
+.reader-theme-dark .ereader-prose,
+.reader-theme-dark .ereader-prose p,
+.reader-theme-dark .ereader-prose li,
+.reader-theme-dark .ereader-prose strong,
+.reader-theme-dark .ereader-prose td,
+.reader-theme-dark h1,
+.reader-theme-dark h2,
+.reader-theme-dark h3 {
+  color: var(--reader-ink);
+}
+
+.reader-font-sans .ereader-prose {
+  font-family: var(--font-body);
+}
+
+.reader-font-serif .ereader-prose {
+  font-family: var(--font-serif);
 }
 
 /* ──────────────────────────────────────────────

@@ -1,7 +1,7 @@
 /* ===================================================================
    AXONPASS — Adobe-Style Interactive Content Reader & Read Aloud Engine
-   Real-Time Sentence Highlighting | Click-to-Read From Anywhere
-   Auto-Scroll Follow-Along | In-App Audio Guide | 100% Free Web Speech
+   Rich Editorial Typography | Docked Mini-Player | Real Lists, Tables,
+   Callouts, Copyable Code | Balanced Sentence Highlighting
    =================================================================== */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -14,13 +14,19 @@ import {
   type SpeechPlaybackState,
   type SpeechVoiceOption,
 } from '../../lib/audio/speechEngine';
-import { segmentDocumentForSpeech } from '../../lib/audio/speechSegmenter';
+import { segmentDocumentForSpeech, type CalloutKind } from '../../lib/audio/speechSegmenter';
+import type { SectionHeading } from '../../lib/contentNormalizer';
+
+export type ReadingTheme = 'light' | 'sepia' | 'dark';
+export type ReadingFont = 'sans' | 'serif';
 
 export interface AdobeContentReaderProps {
   contentMarkdown: string;
   chapterTitle?: string;
   bookTitle?: string;
   fontSize?: 'sm' | 'base' | 'lg' | 'xl';
+  readingTheme?: ReadingTheme;
+  readingFont?: ReadingFont;
   onNextChapter?: () => void;
   onPrevChapter?: () => void;
   showAudioControlsInitially?: boolean;
@@ -29,33 +35,48 @@ export interface AdobeContentReaderProps {
   onHighlightSave?: (selectedText: string) => void;
   onCreateFlashcard?: (selectedText: string) => void;
   onAskTutor?: (selectedText: string) => void;
+  onHeadingsExtracted?: (headings: SectionHeading[]) => void;
 }
+
+const CALLOUT_META: Record<CalloutKind, { icon: string; label: string }> = {
+  tip: { icon: '💡', label: 'Exam Tip' },
+  warning: { icon: '⚠️', label: 'Watch Out' },
+  definition: { icon: '📘', label: 'Key Definition' },
+  takeaway: { icon: '🎯', label: 'Key Takeaway' },
+  note: { icon: '📝', label: 'Important Note' },
+};
+
+const SPEED_PRESETS = [0.75, 1.0, 1.25, 1.5, 2.0];
 
 export default function AdobeContentReader({
   contentMarkdown,
   chapterTitle,
   bookTitle,
   fontSize = 'base',
+  readingTheme = 'light',
+  readingFont = 'sans',
   onNextChapter,
   onPrevChapter,
-  showAudioControlsInitially = true,
+  showAudioControlsInitially = false,
   initialSentenceIndex = 0,
   onSentenceProgress,
   onHighlightSave,
   onCreateFlashcard,
   onAskTutor,
+  onHeadingsExtracted,
 }: AdobeContentReaderProps) {
   const [playbackState, setPlaybackState] = useState<SpeechPlaybackState>(speechEngine.getState());
   const [voices, setVoices] = useState<SpeechVoiceOption[]>([]);
   const [activeSentenceIndex, setActiveSentenceIndex] = useState<number | null>(null);
-  const [isMinimized, setIsMinimized] = useState(false);
   const [showToolbar, setShowToolbar] = useState(showAudioControlsInitially);
+  const [audioOptionsOpen, setAudioOptionsOpen] = useState(false);
   const [followAlong, setFollowAlong] = useState(true);
   const [autoAdvanceChapter, setAutoAdvanceChapter] = useState(true);
   const [selectedText, setSelectedText] = useState('');
   const [selectionFeedback, setSelectionFeedback] = useState<string | null>(null);
   const [sleepMode, setSleepMode] = useState<'off' | 'end' | 15 | 30 | 60>('off');
   const [sleepSecondsLeft, setSleepSecondsLeft] = useState<number>(0);
+  const [copiedBlockKey, setCopiedBlockKey] = useState<number | null>(null);
 
   const bookmarkKey = `anoxpass_audio_bmarks_v1_${bookTitle || 'book'}_${chapterTitle || 'ch'}`;
   const [audioBookmarks, setAudioBookmarks] = useState<Array<{ sentenceIndex: number; label: string }>>(() => {
@@ -94,17 +115,29 @@ export default function AdobeContentReader({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Sync audio toolbar visibility if parent toggles Read Aloud
   useEffect(() => {
     if (showAudioControlsInitially) {
       setShowToolbar(true);
     }
   }, [showAudioControlsInitially]);
 
-  // Parse document into structured blocks and synchronized sentences
+  // Parse normalized document into coherent editorial blocks & synchronized sentences
   const { blocks, allSentences } = useMemo(() => {
     return segmentDocumentForSpeech(contentMarkdown);
   }, [contentMarkdown]);
+
+  // Emit H2/H3 section outline headings for the right "On This Page" aside
+  useEffect(() => {
+    if (!onHeadingsExtracted) return;
+    const extracted: SectionHeading[] = blocks
+      .filter((b) => b.type === 'heading' && b.headingId && (b.headingLevel === 2 || b.headingLevel === 3))
+      .map((b) => ({
+        id: b.headingId as string,
+        level: b.headingLevel as number,
+        text: b.raw.replace(/^#{1,6}\s+/, '').replace(/[*_`]/g, '').trim(),
+      }));
+    onHeadingsExtracted(extracted);
+  }, [blocks, onHeadingsExtracted]);
 
   // Load sentences into speechEngine when content changes
   useEffect(() => {
@@ -115,7 +148,7 @@ export default function AdobeContentReader({
     }
   }, [allSentences, chapterTitle, bookTitle]);
 
-  // Subscribe to speechEngine state and sentence changes
+  // Subscribe to speechEngine state & sentence changes
   useEffect(() => {
     const unsubState = speechEngine.onStateChange((s) => {
       setPlaybackState(s);
@@ -125,7 +158,6 @@ export default function AdobeContentReader({
         setActiveSentenceIndex(null);
       }
 
-      // Check auto-advance to next chapter when speech ends (disabled when Sleep = End of Section)
       if (
         autoAdvanceChapter &&
         sleepMode !== 'end' &&
@@ -142,7 +174,6 @@ export default function AdobeContentReader({
       setActiveSentenceIndex(index);
       onSentenceProgress?.(index);
 
-      // Adobe-style auto-scroll to keep active sentence centered in view
       if (followAlong) {
         const sentenceEl = document.getElementById(`reader-sentence-${index}`);
         if (sentenceEl) {
@@ -159,7 +190,6 @@ export default function AdobeContentReader({
     };
   }, [followAlong, autoAdvanceChapter, sleepMode, onNextChapter, onSentenceProgress]);
 
-  // Capture text selection for Kindle-style Highlight / Flashcard / Tutor popover
   const handleMouseUpSelection = () => {
     if (typeof window === 'undefined') return;
     const sel = window.getSelection()?.toString().trim() || '';
@@ -170,7 +200,7 @@ export default function AdobeContentReader({
     }
   };
 
-  // Keyboard shortcuts when toolbar is visible
+  // Keyboard shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -191,7 +221,6 @@ export default function AdobeContentReader({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Handle click-to-read from any sentence
   const handleSentenceClick = (sentenceIndex: number) => {
     setShowToolbar(true);
     speechEngine.playFromSentence(sentenceIndex, allSentences.map((s) => s.cleanSpeech));
@@ -216,12 +245,10 @@ export default function AdobeContentReader({
     setActiveSentenceIndex(null);
   };
 
-  const handleSpeedChange = (rate: number) => {
-    speechEngine.setRate(rate);
-  };
-
-  const handleVoiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    speechEngine.setVoiceByURI(e.target.value);
+  const handleCycleSpeed = () => {
+    const curIdx = SPEED_PRESETS.findIndex((r) => Math.abs(r - playbackState.rate) < 0.05);
+    const nextRate = SPEED_PRESETS[(curIdx + 1) % SPEED_PRESETS.length];
+    speechEngine.setRate(nextRate);
   };
 
   const percent =
@@ -231,569 +258,45 @@ export default function AdobeContentReader({
       ? Math.round(((playbackState.currentIndex + 1) / playbackState.totalSentences) * 100)
       : 0;
 
-  const currentDisplaySentence =
-    activeSentenceIndex !== null && allSentences[activeSentenceIndex]
-      ? allSentences[activeSentenceIndex].cleanSpeech
-      : playbackState.currentSentence;
-
   return (
-    <div ref={containerRef} className="adobe-reader-container" style={{ position: 'relative' }}>
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* FLOATING CORNER PILL (WHEN MINIMIZED)                         */}
-      {/* ──────────────────────────────────────────────────────────── */}
-      {showToolbar && isMinimized && (
-        <div
-          className="card shadow-lg animate-fade-in"
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            zIndex: 999,
-            padding: '6px 14px',
-            backgroundColor: 'var(--color-bg)',
-            border: '2px solid var(--color-primary)',
-            borderRadius: 'var(--radius-full)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          <button
-            type="button"
-            className="btn btn-xs btn-primary"
-            onClick={handleTogglePlay}
-            style={{ width: '32px', height: '32px', borderRadius: '50%', padding: 0 }}
-            title={playbackState.isPlaying && !playbackState.isPaused ? 'Pause' : 'Play'}
-          >
-            {playbackState.isPlaying && !playbackState.isPaused ? '⏸' : '▶'}
-          </button>
-
-          <div
-            onClick={() => setIsMinimized(false)}
-            style={{
-              fontSize: '11px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-            title="Click to expand player"
-          >
-            <span>🎧</span>
-            <span>{percent}%</span>
-          </div>
-
-          <button
-            type="button"
-            className="btn btn-xs btn-ghost"
-            onClick={() => speechEngine.skipNext()}
-            title="Next Sentence"
-            style={{ padding: '2px 4px' }}
-          >
-            ⏩
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-xs btn-secondary"
-            onClick={() => setIsMinimized(false)}
-            title="Expand Full Controls"
-            style={{ fontSize: '10px', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}
-          >
-            ⤢ Controls
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-xs btn-ghost"
-            onClick={() => {
-              handleStop();
-              setShowToolbar(false);
-            }}
-            title="Close Audio Reader"
-            style={{ padding: '2px 4px', fontSize: '12px' }}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* ADOBE / EDGE STYLE AUDIO CONTROL BAR (DOCKED/EXPANDED)        */}
-      {/* ──────────────────────────────────────────────────────────── */}
-      {showToolbar && !isMinimized && (
-        <div
-          className="card shadow-lg animate-slide-up"
-          style={{
-            margin: '0 0 var(--space-4) 0',
-            padding: 'var(--space-3) var(--space-4)',
-            backgroundColor: 'var(--color-bg)',
-            border: '1px solid var(--border-color)',
-            borderLeft: '4px solid var(--color-primary)',
-            borderRadius: 'var(--radius-lg)',
-            boxShadow: '0 6px 20px rgba(0, 35, 102, 0.08)',
-          }}
-        >
-          {/* Top Bar: Title & Configuration */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '8px',
-              marginBottom: '8px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.25rem' }}>🎧</span>
-              <div>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'bold', color: 'var(--color-primary)' }}>
-                  Adobe-Style Read Aloud — Audio on the Go
-                </div>
-                {chapterTitle && (
-                  <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)' }}>
-                    {chapterTitle}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {/* Voice Selector */}
-              {voices.length > 0 && (
-                <select
-                  className="select select-xs"
-                  style={{ fontSize: '11px', maxWidth: '170px' }}
-                  value={playbackState.selectedVoiceURI || ''}
-                  onChange={handleVoiceChange}
-                  title="Select Reading Voice"
-                >
-                  {voices.map((v) => (
-                    <option key={v.voiceURI} value={v.voiceURI}>
-                      🗣 {v.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {/* Speed Presets */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '2px',
-                  backgroundColor: 'var(--color-bg-subtle)',
-                  padding: '2px',
-                  borderRadius: 'var(--radius-sm)',
-                }}
-              >
-                {[0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
-                  <button
-                    key={rate}
-                    type="button"
-                    onClick={() => handleSpeedChange(rate)}
-                    style={{
-                      border: 'none',
-                      background: playbackState.rate === rate ? 'var(--color-primary)' : 'transparent',
-                      color: playbackState.rate === rate ? '#fff' : 'var(--color-ink-muted)',
-                      fontSize: '10px',
-                      fontWeight: 'bold',
-                      padding: '2px 5px',
-                      borderRadius: '3px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {rate}x
-                  </button>
-                ))}
-              </div>
-
-              {/* Follow-Along Auto Scroll Toggle */}
-              <button
-                type="button"
-                className={`btn btn-xs ${followAlong ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setFollowAlong(!followAlong)}
-                title="Automatically scroll page to keep spoken sentence in view (Adobe Reader style)"
-                style={{ fontSize: '10px', padding: '2px 8px' }}
-              >
-                📜 Follow: {followAlong ? 'ON' : 'OFF'}
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-xs btn-secondary"
-                onClick={() => setIsMinimized(true)}
-                title="Minimize to Floating Corner Pill"
-                style={{ fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-              >
-                <span>—</span>
-                <span>Mini</span>
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-xs btn-ghost"
-                onClick={() => {
-                  handleStop();
-                  setShowToolbar(false);
-                }}
-                title="Stop & Close Player"
-                style={{ fontSize: '12px', padding: '2px 6px' }}
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-
-          {/* Playback Controls & Progress Scrubber */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '10px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {onPrevChapter && (
-                <button
-                  type="button"
-                  className="btn btn-xs btn-secondary"
-                  onClick={onPrevChapter}
-                  title="Previous Chapter"
-                >
-                  ⏮ Ch
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="btn btn-xs btn-secondary"
-                onClick={() => speechEngine.skipPrev()}
-                title="Previous Sentence"
-              >
-                ⏪
-              </button>
-
-              <button
-                type="button"
-                className={`btn btn-sm ${
-                  playbackState.isPlaying && !playbackState.isPaused ? 'btn-warning' : 'btn-primary'
-                }`}
-                onClick={handleTogglePlay}
-                style={{ fontWeight: 'bold', minWidth: '78px' }}
-              >
-                {playbackState.isPlaying && !playbackState.isPaused ? '⏸ Pause' : '▶ Listen'}
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-xs btn-secondary"
-                onClick={() => speechEngine.skipNext()}
-                title="Next Sentence"
-              >
-                ⏩
-              </button>
-
-              {onNextChapter && (
-                <button
-                  type="button"
-                  className="btn btn-xs btn-secondary"
-                  onClick={onNextChapter}
-                  title="Next Chapter"
-                >
-                  Ch ⏭
-                </button>
-              )}
-
-              <button
-                type="button"
-                className="btn btn-xs btn-ghost"
-                onClick={handleStop}
-                title="Stop Speech"
-              >
-                ⏹ Stop
-              </button>
-
-              <button
-                type="button"
-                className={`btn btn-xs ${autoAdvanceChapter ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setAutoAdvanceChapter(!autoAdvanceChapter)}
-                title="Auto-advance to next chapter when speech reaches the end"
-                style={{ fontSize: '10px', padding: '2px 6px' }}
-              >
-                Auto-Next: {autoAdvanceChapter ? 'ON' : 'OFF'}
-              </button>
-            </div>
-
-            {/* Progress & Sentence Counter */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                flex: '1',
-                minWidth: '180px',
-                maxWidth: '320px',
-              }}
-            >
-              <div
-                style={{
-                  flex: 1,
-                  height: '6px',
-                  backgroundColor: 'var(--color-bg-subtle)',
-                  borderRadius: '3px',
-                  overflow: 'hidden',
-                  cursor: 'pointer',
-                }}
-                title="Click anywhere to jump in the audio"
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const clickX = e.clientX - rect.left;
-                  const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-                  const targetSentence = Math.floor(ratio * (allSentences.length || 1));
-                  handleSentenceClick(targetSentence);
-                }}
-              >
-                <div
-                  style={{
-                    width: `${percent}%`,
-                    height: '100%',
-                    backgroundColor: 'var(--color-primary)',
-                    transition: 'width 0.2s ease',
-                  }}
-                />
-              </div>
-
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--color-ink-muted)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {allSentences.length > 0 && activeSentenceIndex !== null
-                  ? `${activeSentenceIndex + 1}/${allSentences.length}`
-                  : `0/${allSentences.length}`}
-              </span>
-            </div>
-          </div>
-
-          {/* Commute Controls: Sleep Timer & Audio Bookmarks */}
-          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-              <label style={{ fontSize: '11px', color: 'var(--color-ink-muted)', fontWeight: 600 }}>
-                ⏱ Sleep:
-              </label>
-              <select
-                className="select select-xs"
-                style={{ fontSize: '11px' }}
-                value={String(sleepMode)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === 'off' || v === 'end') {
-                    setSleepMode(v);
-                    setSleepSecondsLeft(0);
-                  } else {
-                    const mins = Number(v) as 15 | 30 | 60;
-                    setSleepMode(mins);
-                    setSleepSecondsLeft(mins * 60);
-                  }
-                }}
-              >
-                <option value="off">Off</option>
-                <option value="15">15 min</option>
-                <option value="30">30 min</option>
-                <option value="60">60 min</option>
-                <option value="end">End of Section</option>
-              </select>
-              {typeof sleepMode === 'number' && sleepSecondsLeft > 0 && (
-                <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}>
-                  {Math.floor(sleepSecondsLeft / 60)}:{String(sleepSecondsLeft % 60).padStart(2, '0')}
-                </span>
-              )}
-
-              <button
-                type="button"
-                className="btn btn-xs btn-secondary"
-                onClick={() => {
-                  const idx = activeSentenceIndex ?? playbackState.currentIndex ?? 0;
-                  const snippet = (allSentences[idx]?.cleanSpeech || `Sentence ${idx + 1}`).slice(0, 32);
-                  const next = [
-                    ...audioBookmarks.filter((b) => b.sentenceIndex !== idx),
-                    { sentenceIndex: idx, label: `#${idx + 1} · ${snippet}` },
-                  ].slice(-6);
-                  setAudioBookmarks(next);
-                  try {
-                    localStorage.setItem(bookmarkKey, JSON.stringify(next));
-                  } catch {
-                    // ignore storage quota
-                  }
-                }}
-              >
-                🔖 Bookmark Audio
-              </button>
-            </div>
-
-            {audioBookmarks.length > 0 && (
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                {audioBookmarks.map((bm) => (
-                  <button
-                    key={bm.sentenceIndex}
-                    type="button"
-                    className="btn btn-xs btn-ghost"
-                    style={{ fontSize: '10px', border: '1px solid var(--border-color)' }}
-                    onClick={() => handleSentenceClick(bm.sentenceIndex)}
-                    title="Jump audio to bookmark"
-                  >
-                    ▶ {bm.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Live Spoken Sentence Subtitle Box */}
-          {playbackState.isPlaying && currentDisplaySentence && (
-            <div
-              className="animate-fade-in"
-              style={{
-                marginTop: '8px',
-                padding: '6px 12px',
-                backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                borderLeft: '3px solid #f59e0b',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: '11px',
-                color: 'var(--color-ink)',
-                lineHeight: 1.4,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
-              <span style={{ fontSize: '1rem' }}>🗣</span>
-              <span style={{ fontStyle: 'italic' }}>&quot;{currentDisplaySentence}&quot;</span>
-            </div>
-          )}
-
-          {/* Interactive Adobe Reader User Guidance */}
-          <div
-            style={{
-              marginTop: '6px',
-              fontSize: '10px',
-              color: 'var(--color-ink-muted)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            <span>💡</span>
-            <span>
-              <strong>Adobe Read Aloud:</strong> Tap or click on <em>any sentence or paragraph</em> below to immediately start reading from that point.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Floating Read Aloud Launcher & Saved Position Resume if Toolbar is Hidden */}
-      {!showToolbar && (
-        <div style={{ marginBottom: 'var(--space-3)', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
+    <div
+      ref={containerRef}
+      className={`adobe-reader-container reader-theme-${readingTheme} reader-font-${readingFont}`}
+      style={{
+        position: 'relative',
+        paddingBottom: showToolbar ? '88px' : undefined,
+      }}
+    >
+      {/* Slim Quick Listen / Resume Launcher when Docked Audio Player is Closed */}
+      {!showToolbar && allSentences.length > 0 && (
+        <div style={{ marginBottom: 'var(--space-4)', display: 'flex', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap' }}>
           {initialSentenceIndex > 0 && initialSentenceIndex < allSentences.length && (
             <button
               type="button"
               onClick={() => handleSentenceClick(initialSentenceIndex)}
               className="btn btn-sm btn-primary"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 'bold',
-                borderRadius: 'var(--radius-full)',
-              }}
+              style={{ borderRadius: 'var(--radius-full)' }}
             >
-              <span>▶</span>
-              <span>Resume Audio (Sentence {initialSentenceIndex + 1}/{allSentences.length})</span>
+              ▶ Resume Audio ({initialSentenceIndex + 1}/{allSentences.length})
             </button>
           )}
           <button
             type="button"
             onClick={() => {
               setShowToolbar(true);
-              setIsMinimized(false);
               handleTogglePlay();
             }}
             className="btn btn-sm btn-secondary"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: 'var(--text-xs)',
-              fontWeight: 'bold',
-              borderRadius: 'var(--radius-full)',
-            }}
+            style={{ borderRadius: 'var(--radius-full)' }}
           >
-            <span>🎧</span>
-            <span>Listen with Adobe Read Aloud</span>
+            🎧 Listen Read Aloud
           </button>
         </div>
       )}
 
-      {/* Resume Audio Pill when Toolbar Open & Saved Sentence Exists */}
-      {showToolbar && !playbackState.isPlaying && initialSentenceIndex > 0 && initialSentenceIndex < allSentences.length && (
-        <div
-          style={{
-            marginBottom: 'var(--space-3)',
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            backgroundColor: 'var(--color-primary-surface)',
-            border: '1px solid var(--color-primary-light)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '8px',
-            fontSize: 'var(--text-xs)',
-          }}
-        >
-          <span>🎧 Saved audio bookmark at <strong>sentence {initialSentenceIndex + 1} of {allSentences.length}</strong></span>
-          <button
-            type="button"
-            className="btn btn-xs btn-primary"
-            onClick={() => handleSentenceClick(initialSentenceIndex)}
-          >
-            ▶ Resume Here
-          </button>
-        </div>
-      )}
-
-      {/* Kindle-Style Text Selection Toolbar */}
+      {/* Kindle-Style Sticky Text Selection Toolbar */}
       {(selectedText || selectionFeedback) && (
-        <div
-          className="selection-action-bar"
-          style={{
-            position: 'sticky',
-            top: '8px',
-            zIndex: 40,
-            marginBottom: 'var(--space-3)',
-            padding: '8px 12px',
-            borderRadius: 'var(--radius-lg)',
-            backgroundColor: 'var(--color-ink)',
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '8px',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
-            fontSize: '12px',
-          }}
-        >
+        <div className="selection-action-bar">
           {selectionFeedback ? (
             <span style={{ fontWeight: 700, color: '#86efac' }}>✓ {selectionFeedback}</span>
           ) : (
@@ -805,9 +308,7 @@ export default function AdobeContentReader({
                 <button
                   type="button"
                   className="btn btn-xs btn-secondary"
-                  onClick={() => {
-                    speechEngine.speakSnippet(selectedText);
-                  }}
+                  onClick={() => speechEngine.speakSnippet(selectedText)}
                 >
                   🎧 Read
                 </button>
@@ -865,9 +366,7 @@ export default function AdobeContentReader({
         </div>
       )}
 
-      {/* ──────────────────────────────────────────────────────────── */}
-      {/* INTERACTIVE READING PROSE SURFACE                             */}
-      {/* ──────────────────────────────────────────────────────────── */}
+      {/* Editorial Prose Surface */}
       <article className={`ereader-prose font-size-${fontSize}`} onMouseUp={handleMouseUpSelection}>
         {blocks.map((block, bIdx) => {
           if (block.type === 'divider') {
@@ -876,20 +375,45 @@ export default function AdobeContentReader({
                 key={bIdx}
                 style={{
                   border: 'none',
-                  borderTop: '1px solid var(--border-color)',
+                  borderTop: '1px solid var(--reader-border, var(--border-color))',
                   margin: 'var(--space-6) 0',
                 }}
               />
             );
           }
 
-          if (block.type === 'code' || block.type === 'table') {
+          if (block.type === 'code') {
+            const fenceLines = block.raw.split('\n');
+            const langLabel = fenceLines[0]?.replace(/^```/, '').trim() || 'code';
+            const innerCode = fenceLines.slice(1, fenceLines[fenceLines.length - 1]?.trim().startsWith('```') ? -1 : undefined).join('\n');
             return (
-              <div key={bIdx} className={block.type === 'table' ? 'ereader-table-wrap' : undefined} style={{ margin: 'var(--space-4) 0', overflowX: 'auto' }}>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
+              <div key={bIdx} className="editorial-code-block">
+                <div className="editorial-code-header">
+                  <span>{langLabel.toUpperCase()}</span>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-ghost"
+                    style={{ color: '#CBD5E1', padding: '2px 8px', minHeight: '22px' }}
+                    onClick={() => {
+                      navigator.clipboard?.writeText(innerCode).catch(() => {});
+                      setCopiedBlockKey(bIdx);
+                      setTimeout(() => setCopiedBlockKey((prev) => (prev === bIdx ? null : prev)), 1800);
+                    }}
+                  >
+                    {copiedBlockKey === bIdx ? '✓ Copied' : 'Copy'}
+                  </button>
+                </div>
+                <pre>
+                  <code>{innerCode}</code>
+                </pre>
+              </div>
+            );
+          }
+
+          if (block.type === 'table') {
+            return (
+              <div key={bIdx} className="editorial-table-wrap">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {block.raw}
                 </ReactMarkdown>
               </div>
@@ -899,15 +423,23 @@ export default function AdobeContentReader({
           if (block.type === 'heading') {
             const sentence = block.sentences[0];
             const isActive = sentence && activeSentenceIndex === sentence.index && playbackState.isPlaying;
-            const level = Math.min(6, Math.max(1, block.headingLevel || 2));
+            const level = Math.min(4, Math.max(1, block.headingLevel || 2));
             const headingTag = `h${level}`;
+            const headingClass =
+              level === 2
+                ? 'ereader-block-heading editorial-heading-h2'
+                : level === 3
+                ? 'ereader-block-heading editorial-heading-h3'
+                : level === 4
+                ? 'ereader-block-heading editorial-heading-h4'
+                : 'ereader-block-heading';
 
             const headingContent = sentence ? (
               <span
                 id={`reader-sentence-${sentence.index}`}
                 onClick={() => handleSentenceClick(sentence.index)}
                 className={`ereader-sentence ${isActive ? 'ereader-sentence-active' : ''}`}
-                title="Click to start reading here (Adobe Read Aloud)"
+                title="Click to start Read Aloud from this heading"
               >
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
@@ -925,40 +457,78 @@ export default function AdobeContentReader({
               headingTag,
               {
                 key: bIdx,
-                className: 'ereader-block-heading',
-                style: { position: 'relative' },
+                id: block.headingId,
+                className: headingClass,
               },
               headingContent
             );
           }
 
-          if (block.type === 'list') {
+          if (block.type === 'callout') {
+            const kind = block.calloutKind || 'note';
+            const meta = CALLOUT_META[kind];
             return (
-              <ul key={bIdx} className="ereader-block-list">
-                {block.sentences.map((sentence) => {
-                  const isActive = activeSentenceIndex === sentence.index && playbackState.isPlaying;
-                  const itemContent = sentence.raw.replace(/^[-*+]\s+|\d+\.\s+/, '');
-
-                  return (
-                    <li key={sentence.index} style={{ marginBottom: '6px' }}>
+              <div key={bIdx} className={`editorial-callout editorial-callout--${kind}`}>
+                <div className="editorial-callout-header">
+                  <span>{meta.icon}</span>
+                  <span>{meta.label}</span>
+                </div>
+                <div>
+                  {block.sentences.map((sentence) => {
+                    const isActive = activeSentenceIndex === sentence.index && playbackState.isPlaying;
+                    return (
                       <span
+                        key={sentence.index}
                         id={`reader-sentence-${sentence.index}`}
                         onClick={() => handleSentenceClick(sentence.index)}
                         className={`ereader-sentence ${isActive ? 'ereader-sentence-active' : ''}`}
-                        title="Click to start reading here (Adobe Read Aloud)"
+                        title="Click to start Read Aloud here"
                       >
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm, remarkMath]}
                           rehypePlugins={[rehypeKatex]}
                           components={{ p: ({ children }) => <>{children}</> }}
                         >
-                          {itemContent}
+                          {sentence.raw}
+                        </ReactMarkdown>{' '}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+
+          if (block.type === 'list') {
+            const ListTag = block.ordered ? 'ol' : 'ul';
+            const listClass = block.ordered ? 'ereader-block-olist' : 'ereader-block-list';
+            return (
+              <ListTag key={bIdx} className={listClass}>
+                {block.sentences.map((sentence) => {
+                  const isActive = activeSentenceIndex === sentence.index && playbackState.isPlaying;
+                  return (
+                    <li
+                      key={sentence.index}
+                      className={sentence.indentLevel ? 'ereader-list-nested' : undefined}
+                    >
+                      <span
+                        id={`reader-sentence-${sentence.index}`}
+                        onClick={() => handleSentenceClick(sentence.index)}
+                        className={`ereader-sentence ${isActive ? 'ereader-sentence-active' : ''}`}
+                        title="Click to start Read Aloud from this bullet"
+                      >
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                          components={{ p: ({ children }) => <>{children}</> }}
+                        >
+                          {sentence.raw}
                         </ReactMarkdown>
                       </span>
                     </li>
                   );
                 })}
-              </ul>
+              </ListTag>
             );
           }
 
@@ -967,22 +537,20 @@ export default function AdobeContentReader({
               <blockquote key={bIdx} className="ereader-block-quote">
                 {block.sentences.map((sentence) => {
                   const isActive = activeSentenceIndex === sentence.index && playbackState.isPlaying;
-                  const quoteContent = sentence.raw.replace(/^>\s*/, '');
-
                   return (
                     <span
                       key={sentence.index}
                       id={`reader-sentence-${sentence.index}`}
                       onClick={() => handleSentenceClick(sentence.index)}
                       className={`ereader-sentence ${isActive ? 'ereader-sentence-active' : ''}`}
-                      title="Click to start reading here (Adobe Read Aloud)"
+                      title="Click to start Read Aloud here"
                     >
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath]}
                         rehypePlugins={[rehypeKatex]}
                         components={{ p: ({ children }) => <>{children}</> }}
                       >
-                        {quoteContent}
+                        {sentence.raw}
                       </ReactMarkdown>{' '}
                     </span>
                   );
@@ -996,14 +564,13 @@ export default function AdobeContentReader({
             <p key={bIdx} className="ereader-block-paragraph">
               {block.sentences.map((sentence) => {
                 const isActive = activeSentenceIndex === sentence.index && playbackState.isPlaying;
-
                 return (
                   <span
                     key={sentence.index}
                     id={`reader-sentence-${sentence.index}`}
                     onClick={() => handleSentenceClick(sentence.index)}
                     className={`ereader-sentence ${isActive ? 'ereader-sentence-active' : ''}`}
-                    title="Click to start reading here (Adobe Read Aloud)"
+                    title="Click to start Read Aloud from this sentence"
                   >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
@@ -1019,6 +586,198 @@ export default function AdobeContentReader({
           );
         })}
       </article>
+
+      {/* Unified Non-Colliding Docked Bottom Audio Mini-Player */}
+      {showToolbar && (
+        <div className="docked-audio-bar animate-slide-up" role="region" aria-label="Read Aloud Audio Player">
+          <div className="docked-audio-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {onPrevChapter && (
+                <button type="button" className="btn btn-xs btn-ghost" onClick={onPrevChapter} title="Previous Section">
+                  ⏮
+                </button>
+              )}
+              <button type="button" className="btn btn-xs btn-secondary" onClick={() => speechEngine.skipPrev()} title="Previous Sentence">
+                ⏪
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${playbackState.isPlaying && !playbackState.isPaused ? 'btn-warning' : 'btn-primary'}`}
+                onClick={handleTogglePlay}
+                style={{ minHeight: '34px', padding: '0 14px', fontWeight: 700 }}
+              >
+                {playbackState.isPlaying && !playbackState.isPaused ? '⏸ Pause' : '▶ Listen'}
+              </button>
+              <button type="button" className="btn btn-xs btn-secondary" onClick={() => speechEngine.skipNext()} title="Next Sentence">
+                ⏩
+              </button>
+              {onNextChapter && (
+                <button type="button" className="btn btn-xs btn-ghost" onClick={onNextChapter} title="Next Section">
+                  ⏭
+                </button>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '140px' }}>
+              <div
+                className="docked-audio-scrubber"
+                title="Click to jump in audio"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  handleSentenceClick(Math.floor(ratio * (allSentences.length || 1)));
+                }}
+              >
+                <div
+                  style={{
+                    width: `${percent}%`,
+                    height: '100%',
+                    backgroundColor: 'var(--color-primary)',
+                    transition: 'width 0.2s ease',
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-ink-muted)', whiteSpace: 'nowrap' }}>
+                {activeSentenceIndex !== null ? `${activeSentenceIndex + 1}/${allSentences.length}` : `0/${allSentences.length}`}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                type="button"
+                className="btn btn-xs btn-secondary"
+                onClick={handleCycleSpeed}
+                title="Cycle Playback Speed"
+                style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}
+              >
+                {playbackState.rate}x
+              </button>
+              <button
+                type="button"
+                className={`btn btn-xs ${audioOptionsOpen ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setAudioOptionsOpen((o) => !o)}
+                title="Voice, Sleep Timer & Audio Bookmarks"
+              >
+                ⚙ Options
+              </button>
+              <button
+                type="button"
+                className="btn btn-xs btn-ghost"
+                onClick={() => {
+                  handleStop();
+                  setShowToolbar(false);
+                  setAudioOptionsOpen(false);
+                }}
+                title="Close Audio Player"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {audioOptionsOpen && (
+            <div className="docked-audio-popover">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {voices.length > 0 && (
+                  <select
+                    className="select select-xs"
+                    style={{ fontSize: '11px', maxWidth: '175px' }}
+                    value={playbackState.selectedVoiceURI || ''}
+                    onChange={(e) => speechEngine.setVoiceByURI(e.target.value)}
+                    title="Reading Voice"
+                  >
+                    {voices.map((v) => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        🗣 {v.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <select
+                  className="select select-xs"
+                  style={{ fontSize: '11px' }}
+                  value={String(sleepMode)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === 'off' || v === 'end') {
+                      setSleepMode(v);
+                      setSleepSecondsLeft(0);
+                    } else {
+                      const mins = Number(v) as 15 | 30 | 60;
+                      setSleepMode(mins);
+                      setSleepSecondsLeft(mins * 60);
+                    }
+                  }}
+                  title="Sleep Timer"
+                >
+                  <option value="off">⏱ Sleep: Off</option>
+                  <option value="15">⏱ 15 min</option>
+                  <option value="30">⏱ 30 min</option>
+                  <option value="60">⏱ 60 min</option>
+                  <option value="end">⏱ End of Section</option>
+                </select>
+                {typeof sleepMode === 'number' && sleepSecondsLeft > 0 && (
+                  <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--color-primary)' }}>
+                    {Math.floor(sleepSecondsLeft / 60)}:{String(sleepSecondsLeft % 60).padStart(2, '0')}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  className={`btn btn-xs ${followAlong ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setFollowAlong(!followAlong)}
+                >
+                  📜 Follow: {followAlong ? 'ON' : 'OFF'}
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-xs ${autoAdvanceChapter ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setAutoAdvanceChapter(!autoAdvanceChapter)}
+                >
+                  Auto-Next: {autoAdvanceChapter ? 'ON' : 'OFF'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-xs btn-secondary"
+                  onClick={() => {
+                    const idx = activeSentenceIndex ?? playbackState.currentIndex ?? 0;
+                    const snippet = (allSentences[idx]?.cleanSpeech || `Sentence ${idx + 1}`).slice(0, 26);
+                    const next = [
+                      ...audioBookmarks.filter((b) => b.sentenceIndex !== idx),
+                      { sentenceIndex: idx, label: `#${idx + 1} · ${snippet}` },
+                    ].slice(-5);
+                    setAudioBookmarks(next);
+                    try {
+                      localStorage.setItem(bookmarkKey, JSON.stringify(next));
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                >
+                  🔖 Bookmark
+                </button>
+              </div>
+
+              {audioBookmarks.length > 0 && (
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', width: '100%' }}>
+                  {audioBookmarks.map((bm) => (
+                    <button
+                      key={bm.sentenceIndex}
+                      type="button"
+                      className="btn btn-xs btn-ghost"
+                      style={{ fontSize: '10px', border: '1px solid var(--border-color)' }}
+                      onClick={() => handleSentenceClick(bm.sentenceIndex)}
+                    >
+                      ▶ {bm.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

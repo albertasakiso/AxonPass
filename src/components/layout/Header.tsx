@@ -5,9 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useSyncStore } from '../../stores/syncStore';
 import { useAuthStore } from '../../stores/authStore';
-import { useProgressStore } from '../../stores/progressStore';
 import { supabase } from '../../lib/supabase';
 import { AuthModal } from '../auth/AuthModal';
 import { UserProfileModal } from '../profile/UserProfileModal';
@@ -21,9 +19,7 @@ interface HeaderProps {
 
 export default function Header({ title = 'AxonPass' }: HeaderProps) {
   const navigate = useNavigate();
-  const { status, isOnline, pendingCount } = useSyncStore();
   const { user, isAuthenticated, activeCertificationSlug, setActiveCertification } = useAuthStore();
-  const { streakDays } = useProgressStore();
   const [certifications, setCertifications] = useState<Certification[]>([]);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'sign_in' | 'sign_up'>('sign_up');
@@ -38,15 +34,6 @@ export default function Header({ title = 'AxonPass' }: HeaderProps) {
     }
     loadCerts();
   }, []);
-
-  const getSyncLabel = () => {
-    if (!isOnline) return { className: 'sync-offline', text: 'Offline', dot: '' };
-    if (status === 'pending') return { className: 'sync-pending', text: `${pendingCount} syncing`, dot: 'pulse' };
-    if (status === 'error') return { className: 'sync-pending', text: 'Sync Error', dot: '' };
-    return { className: 'sync-synced', text: 'Synced', dot: '' };
-  };
-
-  const sync = getSyncLabel();
 
   return (
     <>
@@ -101,14 +88,8 @@ export default function Header({ title = 'AxonPass' }: HeaderProps) {
         </div>
 
         {/* Right: Streak, XP, FSRS, Realtime Sync Badge & Account Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
           <StreakXpBar />
-
-          {/* Legacy Sync Indicator */}
-          <div className={`sync-indicator ${sync.className}`} style={{ fontSize: '11px', padding: '2px 8px' }} title={`Local streak: ${streakDays}d`}>
-            <span className={`sync-dot ${sync.dot}`} aria-hidden="true" />
-            <span className="desktop-only">{sync.text}</span>
-          </div>
 
           {/* User Account / Coursera Auth Controls */}
           {isAuthenticated && user ? (

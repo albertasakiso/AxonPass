@@ -57,7 +57,7 @@ export default function PbqLabsPage() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 'var(--space-5)', alignItems: 'start' }}>
+      <div className="pbq-workspace-grid">
         {/* Left List */}
         <div className="card" style={{ padding: 'var(--space-3)', display: 'grid', gap: '8px' }}>
           {filteredLabs.map((l) => {
@@ -84,7 +84,7 @@ export default function PbqLabsPage() {
         </div>
 
         {/* Right Interactive PBQ Stage */}
-        <div style={{ gridColumn: 'span 2' }}>
+        <div style={{ minWidth: 0 }}>
           <PbqLabPlayer
             lab={activeLab}
             onCompleteLab={(labId, scorePct, xp) => {

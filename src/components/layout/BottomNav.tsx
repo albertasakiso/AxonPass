@@ -29,42 +29,34 @@ export default function BottomNav() {
   return (
     <>
       {moreOpen && (
-        <div
-          className="mobile-only mobile-more-sheet"
-          role="dialog"
-          aria-label="More Navigation Options"
-          style={{
-            position: 'fixed',
-            bottom: '68px',
-            right: '12px',
-            zIndex: 60,
-            backgroundColor: 'var(--color-bg)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '8px',
-            boxShadow: '0 12px 32px rgba(0,0,0,0.22)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, 1fr)',
-            gap: '6px',
-            minWidth: '210px',
-          }}
-        >
-          {moreLinks.map((m) => (
-            <NavLink
-              key={m.id}
-              to={m.path}
-              onClick={() => {
-                triggerHaptic(8);
-                setMoreOpen(false);
-              }}
-              className={({ isActive }) => `btn btn-xs ${isActive ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: 'flex-start', gap: '6px', padding: '8px 10px' }}
-            >
-              <span>{m.icon}</span>
-              <span>{m.label}</span>
-            </NavLink>
-          ))}
-        </div>
+        <>
+          <div
+            className="mobile-only mobile-more-backdrop"
+            onClick={() => setMoreOpen(false)}
+            aria-hidden="true"
+          />
+          <div
+            className="mobile-only mobile-more-sheet"
+            role="dialog"
+            aria-label="More Navigation Options"
+          >
+            {moreLinks.map((m) => (
+              <NavLink
+                key={m.id}
+                to={m.path}
+                onClick={() => {
+                  triggerHaptic(8);
+                  setMoreOpen(false);
+                }}
+                className={({ isActive }) => `btn btn-xs ${isActive ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ justifyContent: 'flex-start', gap: '6px', padding: '8px 10px' }}
+              >
+                <span>{m.icon}</span>
+                <span>{m.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </>
       )}
 
       <nav className="bottom-nav mobile-only" role="navigation" aria-label="Main navigation">

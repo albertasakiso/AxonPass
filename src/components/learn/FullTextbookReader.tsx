@@ -1,7 +1,7 @@
 /* ===================================================================
-   ANOXPASS — Coursera / Udemy / Kindle Full Textbook Reader
-   Book -> Part -> Chapter -> Subchapter Hierarchy + Lazy Chapter Cache
-   + Adobe-Style Read Aloud + Highlights/Notes + FSRS + Mastery Checks
+   ANOXPASS — Coursera / O'Reilly / Kindle 3-Pane Full Textbook Reader
+   Book -> Chapter -> Subchapter Hierarchy + Mobile Slide-Over TOC +
+   "On This Page" Outline + Paper/Serif Comfort Controls + Shimmer States
    =================================================================== */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -21,7 +21,8 @@ import { fetchSynthesizedLessons } from '../../lib/synthesizedCloudContent';
 import type { CourseLesson } from '../../types/course';
 import { useReadingProgressStore } from '../../stores/readingProgressStore';
 import { useAcademyProgressStore } from '../../stores/academyProgressStore';
-import AdobeContentReader from './AdobeContentReader';
+import { cleanEditorialTitle, type SectionHeading } from '../../lib/contentNormalizer';
+import AdobeContentReader, { type ReadingTheme, type ReadingFont } from './AdobeContentReader';
 
 interface FullTextbookReaderProps {
   certSlug: string;
@@ -31,6 +32,30 @@ interface FullTextbookReaderProps {
   initialSectionId?: string;
   onPracticeChapterQuiz?: (domainNumber: number | null, chapterTitle: string, chapterId: string) => void;
   onAskCoach?: (prompt: string) => void;
+}
+
+function ChapterProgressRing({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.min(1, done / total) : 0;
+  const r = 8;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - pct);
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style={{ flexShrink: 0 }}>
+      <circle cx="10" cy="10" r={r} fill="none" stroke="var(--color-bg-muted)" strokeWidth="2.5" />
+      <circle
+        cx="10"
+        cy="10"
+        r={r}
+        fill="none"
+        stroke={pct >= 1 ? 'var(--color-success)' : 'var(--color-primary)'}
+        strokeWidth="2.5"
+        strokeDasharray={c}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        transform="rotate(-90 10 10)"
+      />
+    </svg>
+  );
 }
 
 export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
@@ -57,13 +82,57 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
 
   const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
   const [tocFilter, setTocFilter] = useState<'all' | 'unread' | 'completed' | 'relearn' | 'bookmarked'>('all');
-  const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xlarge'>('normal');
+  const [mobileTocOpen, setMobileTocOpen] = useState(false);
+
+  // Persisted Kindle-style reading comfort preferences
+  const [fontSize, setFontSize] = useState<'normal' | 'large' | 'xlarge'>(() => {
+    try {
+      const saved = localStorage.getItem('anox_reader_size');
+      if (saved === 'normal' || saved === 'large' || saved === 'xlarge') return saved;
+    } catch {
+      // ignore
+    }
+    return 'normal';
+  });
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(() => {
+    try {
+      const saved = localStorage.getItem('anox_reader_theme');
+      if (saved === 'light' || saved === 'sepia' || saved === 'dark') return saved;
+    } catch {
+      // ignore
+    }
+    return 'light';
+  });
+  const [readingFont, setReadingFont] = useState<ReadingFont>(() => {
+    try {
+      const saved = localStorage.getItem('anox_reader_font');
+      if (saved === 'sans' || saved === 'serif') return saved;
+    } catch {
+      // ignore
+    }
+    return 'sans';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('anox_reader_size', fontSize);
+      localStorage.setItem('anox_reader_theme', readingTheme);
+      localStorage.setItem('anox_reader_font', readingFont);
+    } catch {
+      // ignore
+    }
+  }, [fontSize, readingTheme, readingFont]);
+
   const [focusMode, setFocusMode] = useState(false);
   const [showAudio, setShowAudio] = useState(false);
   const [showNotesDrawer, setShowNotesDrawer] = useState(false);
   const [notesDraft, setNotesDraft] = useState('');
   const [synthesizedLessons, setSynthesizedLessons] = useState<CourseLesson[]>([]);
-  const [showAiDeepDive, setShowAiDeepDive] = useState(false);
+  const [showCompanions, setShowCompanions] = useState(false);
+
+  // In-page right outline state
+  const [sectionHeadings, setSectionHeadings] = useState<SectionHeading[]>([]);
+  const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
 
   // Full-book search state
   const [searchInput, setSearchInput] = useState(initialSearchQuery);
@@ -85,7 +154,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
 
   const { addFsrsCard } = useAcademyProgressStore();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const addToast = useCallback((msg: string, _kind?: string) => {
+  const addToast = useCallback((msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg((prev) => (prev === msg ? null : prev)), 2400);
   }, []);
@@ -146,7 +215,6 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
     };
   }, [dbSlug]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Trigger initial search if deep-linked from ResultsPage (?q=...)
   useEffect(() => {
     if (initialSearchQuery && initialSearchQuery.trim().length >= 2) {
       setSearchInput(initialSearchQuery);
@@ -167,9 +235,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
         if (!active) return;
         setChapterSections(secs);
         if (secs.length > 0) {
-          setSelectedSectionId((prev) =>
-            prev && secs.some((s) => s.id === prev) ? prev : secs[0].id
-          );
+          setSelectedSectionId((prev) => (prev && secs.some((s) => s.id === prev) ? prev : secs[0].id));
         }
       })
       .finally(() => {
@@ -204,6 +270,8 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
 
   useEffect(() => {
     setNotesDraft(activeRecord?.notesMarkdown || '');
+    setSectionHeadings([]);
+    setActiveHeadingId(null);
   }, [activeSection?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const bookStats = useMemo(() => {
@@ -251,11 +319,10 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
     setSelectedSectionId(sectionId);
     setExpandedChapters((prev) => ({ ...prev, [chapterId]: true }));
     setSearchResults(null);
-    const el = document.querySelector('.full-textbook-stage');
-    if (el) el.scrollTop = 0;
+    setMobileTocOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  // Flat section sequence within the active book for Prev/Next Subchapter navigation
   const flatBookMetas = useMemo(
     () =>
       sectionMetas
@@ -289,9 +356,19 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
 
   if (loadingToc) {
     return (
-      <div className="card" style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
-        <div className="animate-spin" style={{ fontSize: '2rem', color: 'var(--color-primary)' }}>⟳</div>
-        <p className="text-muted mt-3">Loading unabridged textbooks &amp; chapters...</p>
+      <div className="full-textbook-grid">
+        <div className="card" style={{ padding: 'var(--space-4)' }}>
+          <div className="skeleton-shimmer skeleton-line skeleton-line--title" />
+          <div className="skeleton-shimmer skeleton-line" />
+          <div className="skeleton-shimmer skeleton-line skeleton-line--short" />
+          <div className="skeleton-shimmer skeleton-line" />
+        </div>
+        <div className="card" style={{ padding: 'var(--space-6)' }}>
+          <div className="skeleton-shimmer skeleton-line skeleton-line--title" />
+          <div className="skeleton-shimmer skeleton-line" />
+          <div className="skeleton-shimmer skeleton-line" />
+          <div className="skeleton-shimmer skeleton-line skeleton-line--short" />
+        </div>
       </div>
     );
   }
@@ -317,9 +394,11 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
         textbookId: activeSection.textbook_id,
         chapterId: activeSection.chapter_id,
         sectionId: activeSection.id,
-        sectionTitle: activeSection.title,
+        sectionTitle: cleanEditorialTitle(activeSection.title),
       }
     : null;
+
+  const hasOutline = sectionHeadings.length >= 2 && !focusMode;
 
   return (
     <div className="full-textbook-shell">
@@ -328,86 +407,160 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
           className="animate-fade-in"
           style={{
             position: 'fixed',
-            bottom: '84px',
-            right: '24px',
-            zIndex: 100,
+            top: 'calc(var(--header-height) + 14px)',
+            right: '20px',
+            zIndex: 'var(--z-toast)' as unknown as number,
             padding: '10px 16px',
             borderRadius: 'var(--radius-md)',
             backgroundColor: 'var(--color-ink)',
-            color: '#fff',
+            color: 'var(--color-ink-inverse)',
             fontSize: '12px',
             fontWeight: 700,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+            boxShadow: 'var(--shadow-lg)',
           }}
         >
           ✓ {toastMsg}
         </div>
       )}
-      {/* Top Book Selector, Search & Reading Toolbar */}
-      <div className="card" style={{ padding: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-          {/* Book Pills */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--color-ink-muted)' }}>
-              📚 BOOKS ({textbooks.length}):
-            </span>
-            {textbooks.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => {
-                  setSelectedBookId(b.id);
-                  const firstCh = chapters.find((c) => c.textbook_id === b.id);
-                  if (firstCh) {
-                    setSelectedChapterId(firstCh.id);
-                    setExpandedChapters({ [firstCh.id]: true });
-                  }
-                }}
-                className={`btn btn-sm ${activeBook?.id === b.id ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ fontSize: '12px' }}
-              >
-                {b.is_primary ? '⭐ ' : '📘 '}
-                {b.title.length > 48 ? b.title.slice(0, 45) + '...' : b.title} ({b.total_chapters} Ch · {b.est_read_hours}h)
-              </button>
-            ))}
-          </div>
 
-          {/* Right Controls: Search + Reading Progress */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void runSearch();
+      {/* Unified Sticky Reader Toolbar (Books + Search + Reading Comfort Controls) */}
+      <div className="reader-unified-toolbar">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: '1 1 280px' }}>
+          <button
+            type="button"
+            className="btn btn-xs btn-secondary"
+            onClick={() => setMobileTocOpen(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+          >
+            📖 Contents
+          </button>
+
+          {textbooks.length > 1 ? (
+            <select
+              className="input"
+              aria-label="Select Textbook"
+              value={activeBook?.id || ''}
+              onChange={(e) => {
+                const bId = e.target.value;
+                setSelectedBookId(bId);
+                const firstCh = chapters.find((c) => c.textbook_id === bId);
+                if (firstCh) {
+                  setSelectedChapterId(firstCh.id);
+                  setExpandedChapters({ [firstCh.id]: true });
+                }
               }}
-              style={{ display: 'flex', gap: '6px' }}
+              style={{
+                fontSize: '12px',
+                fontWeight: 700,
+                padding: '4px 10px',
+                minHeight: '34px',
+                maxWidth: '280px',
+                borderRadius: 'var(--radius-md)',
+              }}
             >
-              <input
-                type="search"
-                value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  if (!e.target.value.trim()) setSearchResults(null);
-                }}
-                placeholder="🔍 Search entire textbook..."
-                className="input input-sm"
-                style={{ minWidth: '210px', fontSize: '12px' }}
-              />
-              <button type="submit" className="btn btn-secondary btn-sm" disabled={searching}>
-                {searching ? '...' : 'Find'}
-              </button>
-            </form>
-
-            <span className="badge badge-success" style={{ fontSize: '11px', fontWeight: 700 }}>
-              ✓ {bookStats.completed}/{bookStats.total} Sections ({bookStats.percent}%)
+              {textbooks.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.is_primary ? '⭐ ' : '📘 '}
+                  {cleanEditorialTitle(b.title)} ({b.total_chapters} Ch)
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)' }}>
+              📘 {cleanEditorialTitle(activeBook?.title || 'Official Manual')}
             </span>
-          </div>
+          )}
+
+          <span className="badge badge-success" style={{ fontSize: '11px' }}>
+            ✓ {bookStats.completed}/{bookStats.total} ({bookStats.percent}%)
+          </span>
         </div>
 
-        {/* Full-Text Search Results Drawer */}
+        {/* Search & Kindle Comfort Bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void runSearch();
+            }}
+            style={{ display: 'flex', gap: '4px' }}
+          >
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => {
+                setSearchInput(e.target.value);
+                if (!e.target.value.trim()) setSearchResults(null);
+              }}
+              placeholder="🔍 Search book..."
+              className="input"
+              style={{ width: '165px', minHeight: '34px', padding: '4px 10px', fontSize: '12px' }}
+            />
+            <button type="submit" className="btn btn-xs btn-secondary" disabled={searching}>
+              {searching ? '...' : 'Find'}
+            </button>
+          </form>
+
+          {/* Paper Theme Switcher */}
+          <div className="font-size-group" role="group" aria-label="Paper Theme">
+            <button
+              type="button"
+              onClick={() => setReadingTheme('light')}
+              className={`font-size-btn ${readingTheme === 'light' ? 'active' : ''}`}
+              title="Crisp Light Paper"
+            >
+              ☀
+            </button>
+            <button
+              type="button"
+              onClick={() => setReadingTheme('sepia')}
+              className={`font-size-btn ${readingTheme === 'sepia' ? 'active' : ''}`}
+              title="Warm Sepia Paper"
+            >
+              📜
+            </button>
+            <button
+              type="button"
+              onClick={() => setReadingTheme('dark')}
+              className={`font-size-btn ${readingTheme === 'dark' ? 'active' : ''}`}
+              title="Night Ink Theme"
+            >
+              🌙
+            </button>
+          </div>
+
+          {/* Serif / Sans Toggle */}
+          <button
+            type="button"
+            onClick={() => setReadingFont((f) => (f === 'sans' ? 'serif' : 'sans'))}
+            className={`btn btn-xs ${readingFont === 'serif' ? 'btn-primary' : 'btn-secondary'}`}
+            title="Toggle Sans-Serif / Editorial Serif"
+          >
+            {readingFont === 'serif' ? 'Serif' : 'Sans'}
+          </button>
+
+          {/* Font Size */}
+          <div className="font-size-group" role="group" aria-label="Text Size">
+            <button type="button" onClick={() => setFontSize('normal')} className={`font-size-btn ${fontSize === 'normal' ? 'active' : ''}`}>A</button>
+            <button type="button" onClick={() => setFontSize('large')} className={`font-size-btn ${fontSize === 'large' ? 'active' : ''}`}>A+</button>
+            <button type="button" onClick={() => setFontSize('xlarge')} className={`font-size-btn ${fontSize === 'xlarge' ? 'active' : ''}`}>A++</button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setFocusMode((f) => !f)}
+            className={`btn btn-xs ${focusMode ? 'btn-primary' : 'btn-secondary'}`}
+            title="Distraction-Free Focus Mode"
+          >
+            {focusMode ? '◧ Show Sidebars' : '⛶ Focus'}
+          </button>
+        </div>
+
+        {/* Inline Full-Text Search Results */}
         {searchResults && (
           <div
             style={{
-              marginTop: 'var(--space-3)',
+              width: '100%',
               padding: 'var(--space-3)',
               borderRadius: 'var(--radius-md)',
               backgroundColor: 'var(--color-bg-subtle)',
@@ -416,7 +569,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <strong style={{ fontSize: '12px' }}>
-                Search Results for “{searchInput}” ({searchResults.length})
+                Matches for “{searchInput}” ({searchResults.length})
               </strong>
               <button type="button" className="btn btn-xs btn-ghost" onClick={() => setSearchResults(null)}>
                 ✕ Close
@@ -427,7 +580,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                 No matching textbook sections found. Try a broader keyword.
               </p>
             ) : (
-              <div style={{ display: 'grid', gap: '6px', maxHeight: '260px', overflowY: 'auto' }}>
+              <div style={{ display: 'grid', gap: '6px', maxHeight: '220px', overflowY: 'auto' }}>
                 {searchResults.map((hit) => (
                   <button
                     key={hit.id}
@@ -443,7 +596,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                     }}
                   >
                     <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)' }}>
-                      {hit.section_code ? `${hit.section_code} · ` : ''}{hit.title}
+                      {hit.section_code ? `${hit.section_code} · ` : ''}{cleanEditorialTitle(hit.title)}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)', marginTop: '2px' }}>
                       {hit.snippet}
@@ -456,17 +609,33 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
         )}
       </div>
 
-      {/* Main 2-Column Book Workspace */}
-      <div className={`full-textbook-grid ${focusMode ? 'focus-mode' : ''}`}>
-        {/* Left TOC Sidebar: Book -> Chapter -> Subchapter */}
+      {/* Mobile TOC Drawer Backdrop */}
+      {mobileTocOpen && (
+        <div
+          className="mobile-toc-backdrop"
+          onClick={() => setMobileTocOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Main 3-Pane Editorial Workspace */}
+      <div className={`full-textbook-grid ${focusMode ? 'focus-mode' : ''} ${hasOutline ? 'has-outline' : ''}`}>
+        {/* Left Pane: Book Table of Contents */}
         {!focusMode && (
-          <aside className="full-textbook-toc card" aria-label="Book Table of Contents">
+          <aside className={`full-textbook-toc card ${mobileTocOpen ? 'mobile-open' : ''}`} aria-label="Book Table of Contents">
             <div style={{ padding: '12px', borderBottom: '1px solid var(--border-color)' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase' }}>
-                {activeBook?.author || 'Official Manual'} · {activeBook?.edition || ''}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-primary)', textTransform: 'uppercase' }}>
+                  {activeBook?.author || 'Official Manual'}
+                </div>
+                {mobileTocOpen && (
+                  <button type="button" className="btn btn-xs btn-ghost" onClick={() => setMobileTocOpen(false)}>
+                    ✕
+                  </button>
+                )}
               </div>
-              <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px' }}>
-                {activeBook?.title}
+              <div style={{ fontSize: '13px', fontWeight: 700, marginTop: '2px', lineHeight: 1.3 }}>
+                {cleanEditorialTitle(activeBook?.title || '')}
               </div>
               <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '8px' }}>
                 {(['all', 'unread', 'completed', 'relearn', 'bookmarked'] as const).map((f) => (
@@ -518,20 +687,21 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                         <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--color-primary)' }}>
                           {ch.part_label || `Chapter ${ch.chapter_number}`}
                         </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                           {typeof chQuizScore === 'number' && (
                             <span className={`badge ${chQuizScore >= 80 ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '9px', padding: '1px 5px' }}>
-                              Quiz {chQuizScore}%
+                              {chQuizScore}%
                             </span>
                           )}
+                          <ChapterProgressRing done={chDoneCount} total={chMetas.length} />
                           <span style={{ fontSize: '10px', color: 'var(--color-ink-muted)' }}>
                             {chDoneCount}/{chMetas.length}
                           </span>
                           <span style={{ fontSize: '10px' }}>{isOpen ? '▾' : '▸'}</span>
                         </div>
                       </div>
-                      <div style={{ fontSize: '12px', fontWeight: 600, textAlign: 'left', marginTop: '2px', lineHeight: 1.3 }}>
-                        {ch.title}
+                      <div style={{ fontSize: '12px', fontWeight: 600, textAlign: 'left', marginTop: '3px', lineHeight: 1.35 }}>
+                        {cleanEditorialTitle(ch.title)}
                       </div>
                     </button>
 
@@ -552,7 +722,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                               </span>
                               <span className="toc-sub-title">
                                 {sec.section_code ? <strong>{sec.section_code} </strong> : null}
-                                {sec.title}
+                                {cleanEditorialTitle(sec.title)}
                               </span>
                               <span style={{ fontSize: '10px', color: 'var(--color-ink-muted)', flexShrink: 0 }}>
                                 {sec.est_read_minutes}m
@@ -569,26 +739,30 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
           </aside>
         )}
 
-        {/* Main Reading Stage */}
-        <main className="full-textbook-stage card">
+        {/* Center Pane: Editorial Reading Stage */}
+        <main className={`full-textbook-stage card reader-theme-${readingTheme}`}>
           {loadingChapter ? (
-            <div style={{ padding: 'var(--space-12)', textAlign: 'center' }}>
-              <div className="animate-spin" style={{ fontSize: '2rem', color: 'var(--color-primary)' }}>⟳</div>
-              <p className="text-muted mt-3">Loading full chapter content...</p>
+            <div className="editorial-prose-column" style={{ padding: 'var(--space-6) 0' }}>
+              <div className="skeleton-shimmer skeleton-line skeleton-line--title" />
+              <div className="skeleton-shimmer skeleton-line" />
+              <div className="skeleton-shimmer skeleton-line" />
+              <div className="skeleton-shimmer skeleton-line skeleton-line--short" />
+              <div className="skeleton-shimmer skeleton-line" />
+              <div className="skeleton-shimmer skeleton-line" />
             </div>
           ) : activeSection && activeChapter ? (
-            <>
-              {/* Stage Top Controls */}
+            <div className="editorial-prose-column">
+              {/* Topic Header Card */}
               <div className="textbook-stage-topbar">
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: '11px', color: 'var(--color-primary)', fontWeight: 700 }}>
-                    {activeBook?.title} › {activeChapter.title}
+                <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--reader-accent, var(--color-primary))', fontWeight: 700, letterSpacing: '0.02em' }}>
+                    {cleanEditorialTitle(activeBook?.title || '')} › {cleanEditorialTitle(activeChapter.title)}
                   </div>
-                  <h2 style={{ margin: '3px 0 0', fontSize: 'var(--text-lg)' }}>
+                  <h2 style={{ margin: '6px 0 0', fontSize: 'var(--text-2xl)', lineHeight: 1.25 }}>
                     {activeSection.section_code ? `${activeSection.section_code} — ` : ''}
-                    {activeSection.title}
+                    {cleanEditorialTitle(activeSection.title)}
                   </h2>
-                  <div style={{ fontSize: '11px', color: 'var(--color-ink-muted)', marginTop: '4px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--reader-ink-muted, var(--color-ink-muted))', marginTop: '6px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                     <span>⏱ ~{activeSection.est_read_minutes} min read</span>
                     <span>📝 {activeSection.word_count.toLocaleString()} words</span>
                     {activeSection.page_start ? (
@@ -600,10 +774,10 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    onClick={() => setShowAudio(!showAudio)}
-                    className={`btn btn-sm ${showAudio ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setShowAudio((s) => !s)}
+                    className={`btn btn-xs ${showAudio ? 'btn-primary' : 'btn-secondary'}`}
                   >
-                    🎧 {showAudio ? 'Hide Audio' : 'Read Aloud'}
+                    🎧 {showAudio ? 'Audio On' : 'Read Aloud'}
                   </button>
 
                   {sectionMetaInput && (
@@ -611,10 +785,9 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                       type="button"
                       onClick={() => {
                         const saved = toggleBookmark(sectionMetaInput);
-                        addToast(saved ? 'Section bookmarked ★' : 'Bookmark removed', 'info');
+                        addToast(saved ? 'Section bookmarked ★' : 'Bookmark removed');
                       }}
-                      className={`btn btn-sm ${activeRecord?.bookmarked ? 'btn-warning' : 'btn-secondary'}`}
-                      title="Bookmark this subchapter"
+                      className={`btn btn-xs ${activeRecord?.bookmarked ? 'btn-warning' : 'btn-secondary'}`}
                     >
                       {activeRecord?.bookmarked ? '★ Saved' : '☆ Save'}
                     </button>
@@ -622,121 +795,65 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setShowNotesDrawer(!showNotesDrawer)}
-                    className={`btn btn-sm ${showNotesDrawer ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setShowNotesDrawer((n) => !n)}
+                    className={`btn btn-xs ${showNotesDrawer ? 'btn-primary' : 'btn-secondary'}`}
                   >
                     🗒 Notes ({(activeRecord?.highlights.length || 0) + (activeRecord?.notesMarkdown ? 1 : 0)})
                   </button>
 
-                  <div className="font-size-group">
-                    <button type="button" onClick={() => setFontSize('normal')} className={`font-size-btn ${fontSize === 'normal' ? 'active' : ''}`}>A</button>
-                    <button type="button" onClick={() => setFontSize('large')} className={`font-size-btn ${fontSize === 'large' ? 'active' : ''}`}>A+</button>
-                    <button type="button" onClick={() => setFontSize('xlarge')} className={`font-size-btn ${fontSize === 'xlarge' ? 'active' : ''}`}>A++</button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setFocusMode(!focusMode)}
-                    className={`btn btn-sm ${focusMode ? 'btn-primary' : 'btn-secondary'}`}
-                    title="Distraction-free Focus Mode"
-                  >
-                    {focusMode ? '◧ Show TOC' : '⛶ Focus'}
-                  </button>
+                  {(synthesizedLessons.length > 0 || activeSection.exam_tips || (activeSection.key_terms?.length ?? 0) > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCompanions((c) => !c)}
+                      className={`btn btn-xs ${showCompanions ? 'btn-primary' : 'btn-secondary'}`}
+                    >
+                      💡 Study Guide {showCompanions ? '▲' : '▼'}
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Key Terms & Exam Tip */}
-              {activeSection.key_terms && activeSection.key_terms.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: 'var(--space-3)' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--color-ink-muted)' }}>Key Concepts:</span>
-                  {activeSection.key_terms.map((t, i) => (
-                    <span key={i} className="term-chip" style={{ fontSize: '11px' }}>{t}</span>
-                  ))}
-                </div>
-              )}
-
-              {activeSection.exam_tips && (
-                <div className="callout-box callout-exam-alert" style={{ marginBottom: 'var(--space-4)' }}>
-                  <div className="callout-title">💡 Exam Watch Alert</div>
-                  <p className="callout-content" style={{ margin: 0 }}>{activeSection.exam_tips}</p>
-                </div>
-              )}
-
-              {/* Cloud-Synced AI Deep Dive & Exam Traps (public.synthesized_lessons) */}
-              {synthesizedLessons.length > 0 && (() => {
-                const secKeywords = (activeSection.title + ' ' + activeChapter.title)
-                  .toLowerCase()
-                  .split(/[^a-z0-9]+/)
-                  .filter((w) => w.length > 4);
-                const matchedAi =
-                  synthesizedLessons.find((l) =>
-                    secKeywords.some((k) => (l.title + ' ' + l.summary).toLowerCase().includes(k))
-                  ) ||
-                  synthesizedLessons[(Math.max(0, (activeChapter.chapter_number || 1) - 1)) % synthesizedLessons.length];
-
-                if (!matchedAi) return null;
-                return (
-                  <div
-                    className="card"
-                    style={{
-                      padding: 'var(--space-3) var(--space-4)',
-                      marginBottom: 'var(--space-4)',
-                      backgroundColor: 'rgba(99, 102, 241, 0.06)',
-                      borderLeft: '4px solid var(--color-primary)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-primary)' }}>
-                        🧠 AI Concept Companion: {matchedAi.title} ({synthesizedLessons.length} Cloud Units)
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-xs btn-secondary"
-                        onClick={() => setShowAiDeepDive((prev) => !prev)}
-                      >
-                        {showAiDeepDive ? 'Hide AI Companion ▲' : 'Open Mental Model & Exam Traps ▼'}
-                      </button>
-                    </div>
-                    {showAiDeepDive && (
-                      <div style={{ marginTop: '10px', fontSize: 'var(--text-xs)', display: 'grid', gap: '8px' }}>
-                        <p style={{ margin: 0, lineHeight: 1.55 }}>{matchedAi.summary}</p>
-                        {matchedAi.coreConcepts?.slice(0, 2).map((cc, idx) => (
-                          <div key={idx} style={{ padding: '8px 10px', borderRadius: '6px', backgroundColor: 'var(--color-bg)', border: '1px solid var(--border-color)' }}>
-                            <strong>{cc.heading}:</strong> {cc.explanation}
-                            {cc.mentalModel && (
-                              <div style={{ marginTop: '4px', color: 'var(--color-primary)', fontStyle: 'italic' }}>
-                                Mental Model: {cc.mentalModel}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                        {matchedAi.examTraps && matchedAi.examTraps.length > 0 && (
-                          <div style={{ padding: '8px 10px', borderRadius: '6px', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderLeft: '3px solid #f59e0b' }}>
-                            <strong>⚠️ Common Exam Traps:</strong>
-                            <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                              {matchedAi.examTraps.slice(0, 3).map((trap, i) => (
-                                <li key={i}>{trap}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
+              {/* Single Clean Collapsible Study Guide Accordion (Replaces Multi-Card Pre-Prose Stack) */}
+              {showCompanions && (
+                <div className="editorial-callout editorial-callout--definition" style={{ marginBottom: 'var(--space-5)' }}>
+                  <div className="editorial-callout-header">
+                    <span>📚 Section Key Concepts &amp; Exam Companion</span>
                   </div>
-                );
-              })()}
+                  {activeSection.key_terms && activeSection.key_terms.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: 'var(--space-3)' }}>
+                      {activeSection.key_terms.map((t, i) => (
+                        <span key={i} className="term-chip">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  {activeSection.exam_tips && (
+                    <p style={{ margin: '0 0 var(--space-3) 0', fontSize: 'var(--text-sm)' }}>
+                      <strong>💡 Exam Watch:</strong> {activeSection.exam_tips}
+                    </p>
+                  )}
+                  {synthesizedLessons.length > 0 && (() => {
+                    const secKeywords = (activeSection.title + ' ' + activeChapter.title)
+                      .toLowerCase()
+                      .split(/[^a-z0-9]+/)
+                      .filter((w) => w.length > 4);
+                    const matchedAi =
+                      synthesizedLessons.find((l) =>
+                        secKeywords.some((k) => (l.title + ' ' + l.summary).toLowerCase().includes(k))
+                      ) ||
+                      synthesizedLessons[Math.max(0, (activeChapter.chapter_number || 1) - 1) % synthesizedLessons.length];
+                    if (!matchedAi) return null;
+                    return (
+                      <div style={{ fontSize: 'var(--text-xs)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+                        <strong>🧠 AI Mental Model — {matchedAi.title}:</strong> {matchedAi.summary}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
-              {/* Collapsible Highlights & Personal Notes Drawer */}
+              {/* Collapsible Personal Notes & Highlights */}
               {showNotesDrawer && sectionMetaInput && (
-                <div
-                  className="card"
-                  style={{
-                    padding: 'var(--space-4)',
-                    marginBottom: 'var(--space-4)',
-                    backgroundColor: 'var(--color-bg-subtle)',
-                    borderLeft: '4px solid var(--color-primary)',
-                  }}
-                >
+                <div className="editorial-callout editorial-callout--note" style={{ marginBottom: 'var(--space-5)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <strong>🗒 Personal Study Notes &amp; Highlights (Synced)</strong>
                     <button type="button" className="btn btn-xs btn-ghost" onClick={() => setShowNotesDrawer(false)}>✕</button>
@@ -785,7 +902,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                     className="btn btn-sm btn-primary"
                     onClick={() => {
                       saveNotes(sectionMetaInput, notesDraft);
-                      addToast('Notes saved & synced', 'success');
+                      addToast('Notes saved & synced');
                     }}
                   >
                     💾 Save Notes
@@ -793,43 +910,46 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                 </div>
               )}
 
-              {/* Full Unabridged Book Content + Adobe Read Aloud */}
+              {/* Full Unabridged Book Content + Docked Read Aloud */}
               <AdobeContentReader
                 contentMarkdown={activeSection.content_markdown}
-                chapterTitle={`${activeSection.section_code ? activeSection.section_code + ' ' : ''}${activeSection.title}`}
-                bookTitle={activeBook?.title}
+                chapterTitle={`${activeSection.section_code ? activeSection.section_code + ' ' : ''}${cleanEditorialTitle(activeSection.title)}`}
+                bookTitle={cleanEditorialTitle(activeBook?.title || '')}
                 fontSize={fontSize === 'normal' ? 'base' : fontSize === 'large' ? 'lg' : 'xl'}
+                readingTheme={readingTheme}
+                readingFont={readingFont}
                 showAudioControlsInitially={showAudio}
                 initialSentenceIndex={activeRecord?.lastSentenceIndex || 0}
+                onHeadingsExtracted={setSectionHeadings}
                 onSentenceProgress={(idx) => {
                   if (sectionMetaInput) saveAudioPosition(sectionMetaInput, idx);
                 }}
                 onHighlightSave={(sel) => {
                   if (sectionMetaInput) {
                     addHighlight(sectionMetaInput, sel, 'amber');
-                    addToast('Highlight saved to section notes', 'success');
+                    addToast('Highlight saved to section notes');
                   }
                 }}
                 onCreateFlashcard={(sel) => {
                   addFsrsCard({
-                    front: `${activeSection.title} (${dbSlug.toUpperCase()})`,
+                    front: `${cleanEditorialTitle(activeSection.title)} (${dbSlug.toUpperCase()})`,
                     back: sel,
                     sourceType: 'certification',
                     sourceId: activeSection.id,
-                    tags: [dbSlug, activeChapter.title],
+                    tags: [dbSlug, cleanEditorialTitle(activeChapter.title)],
                   });
-                  addToast('Added selection to FSRS spaced-repetition queue!', 'success');
+                  addToast('Added selection to FSRS spaced-repetition queue!');
                 }}
                 onAskTutor={(sel) => {
                   onAskCoach?.(
-                    `Explain this passage from "${activeBook?.title}" (${activeChapter.title} > ${activeSection.title}) clearly and highlight any exam traps:\n\n"${sel}"`
+                    `Explain this passage from "${cleanEditorialTitle(activeBook?.title || '')}" (${cleanEditorialTitle(activeChapter.title)} > ${cleanEditorialTitle(activeSection.title)}) clearly and highlight any exam traps:\n\n"${sel}"`
                   );
                 }}
                 onNextChapter={flatIndex < flatBookMetas.length - 1 ? handleNextSection : undefined}
                 onPrevChapter={flatIndex > 0 ? handlePrevSection : undefined}
               />
 
-              {/* Bottom Andela-Style Mastery Action Strip */}
+              {/* Bottom Mastery Action Strip */}
               <div className="textbook-mastery-strip">
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {sectionMetaInput && (
@@ -839,7 +959,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                         onClick={() => {
                           const next = activeRecord?.status === 'completed' ? 'in_progress' : 'completed';
                           setSectionStatus(sectionMetaInput, next);
-                          if (next === 'completed') addToast('+25 XP — Subchapter Mastered!', 'success');
+                          if (next === 'completed') addToast('+25 XP — Subchapter Mastered!');
                         }}
                         className={`btn btn-sm ${activeRecord?.status === 'completed' ? 'btn-success' : 'btn-primary'}`}
                       >
@@ -867,7 +987,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                       }
                       className="btn btn-sm btn-primary"
                     >
-                      ⚡ Chapter Mastery Check (10Q)
+                      ⚡ Chapter Check (10Q)
                     </button>
                   )}
 
@@ -876,7 +996,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                       type="button"
                       onClick={() =>
                         onAskCoach(
-                          `Quiz me or clarify key exam concepts from ${activeBook?.title} — ${activeChapter.title} (${activeSection.title}).`
+                          `Quiz me or clarify key exam concepts from ${cleanEditorialTitle(activeBook?.title || '')} — ${cleanEditorialTitle(activeChapter.title)} (${cleanEditorialTitle(activeSection.title)}).`
                         )
                       }
                       className="btn btn-sm btn-secondary"
@@ -893,7 +1013,7 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                     onClick={handlePrevSection}
                     className="btn btn-sm btn-secondary"
                   >
-                    ← Prev Subchapter
+                    ← Prev
                   </button>
                   <button
                     type="button"
@@ -901,17 +1021,40 @@ export const FullTextbookReader: React.FC<FullTextbookReaderProps> = ({
                     onClick={handleNextSection}
                     className="btn btn-sm btn-primary"
                   >
-                    Next Subchapter →
+                    Next →
                   </button>
                 </div>
               </div>
-            </>
+            </div>
           ) : (
             <div style={{ padding: 'var(--space-10)', textAlign: 'center' }}>
               <p className="text-muted">Select any chapter or subchapter from the Table of Contents to begin reading.</p>
             </div>
           )}
         </main>
+
+        {/* Right Pane: Auto-Generated "On This Page" Mini-Outline */}
+        {hasOutline && (
+          <aside className="on-this-page-aside" aria-label="On This Page">
+            <div className="on-this-page-title">On This Page</div>
+            <nav style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {sectionHeadings.map((h) => (
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveHeadingId(h.id);
+                    const el = document.getElementById(h.id);
+                    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                  className={`on-this-page-link ${h.level === 3 ? 'is-h3' : ''} ${activeHeadingId === h.id ? 'active' : ''}`}
+                >
+                  {h.text}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        )}
       </div>
     </div>
   );
